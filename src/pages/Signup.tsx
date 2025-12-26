@@ -75,6 +75,26 @@ export default function Signup() {
     }
   };
 
+  const handleMicrosoftSignIn = async () => {
+    setLoading("microsoft");
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "azure",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+          scopes: "email profile openid",
+        },
+      });
+      if (error) {
+        toast.error(error.message || "Failed to sign up with Microsoft");
+        setLoading(null);
+      }
+    } catch (err) {
+      toast.error("Failed to sign up with Microsoft. Please try again.");
+      setLoading(null);
+    }
+  };
+
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +201,26 @@ export default function Signup() {
                   </svg>
                 )}
                 {loading === "google" ? "Creating account..." : "Continue with Google"}
+              </Button>
+
+              <Button
+                type="button"
+                variant="oauth"
+                className="w-full h-12"
+                onClick={handleMicrosoftSignIn}
+                disabled={loading !== null}
+              >
+                {loading === "microsoft" ? (
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                ) : (
+                  <svg className="w-5 h-5 mr-2" viewBox="0 0 21 21">
+                    <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                    <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                    <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                  </svg>
+                )}
+                {loading === "microsoft" ? "Creating account..." : "Continue with Microsoft"}
               </Button>
 
               <div className="relative">
