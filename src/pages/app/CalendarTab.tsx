@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, ExternalLink, Search, MoreHorizontal, BookmarkMinus, BookmarkPlus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Search, MoreHorizontal, Ban, RotateCcw, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCalendarData } from "@/hooks/useCalendarData";
 import { format } from "date-fns";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { EditTrackingModal } from "@/components/companies/EditTrackingModal";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -26,9 +27,10 @@ interface TrackedCompany {
   window: string;
   urgency: Urgency;
   isTracked: boolean;
+  isArchived: boolean;
 }
 
-const COMPANY_DATA: Record<string, Omit<TrackedCompany, "isTracked">> = {
+const COMPANY_DATA: Record<string, Omit<TrackedCompany, "isTracked" | "isArchived">> = {
   "Google": { name: "Google", roles: ["SWE", "PM"], seasons: ["Summer"], window: "Jan 8–14", urgency: "1 day" },
   "Meta": { name: "Meta", roles: ["SWE"], seasons: ["Summer"], window: "Jan 10–18", urgency: "1-3 days" },
   "Amazon": { name: "Amazon", roles: ["SWE"], seasons: ["Summer"], window: "Feb 1–15", urgency: "1 week" },
@@ -49,14 +51,22 @@ function getUrgencyStyle(urgency: Urgency) {
 }
 
 type TabMode = "calendar" | "tracker";
+type TrackerTab = "tracking" | "archived";
 
 export default function CalendarTab() {
   const [mode, setMode] = useState<TabMode>("calendar");
+  const [trackerTab, setTrackerTab] = useState<TrackerTab>("tracking");
   const [calendarView, setCalendarView] = useState<"month" | "agenda">("month");
   const [searchQuery, setSearchQuery] = useState("");
   const [trackedCompanies, setTrackedCompanies] = useState<Set<string>>(
-    new Set(["Google", "Meta", "Amazon", "Apple", "Stripe"]) // Mock initial tracked
+    new Set(["Google", "Meta", "Amazon", "Apple", "Stripe"])
   );
+  const [archivedCompanies, setArchivedCompanies] = useState<Set<string>>(new Set());
+  const [companyData, setCompanyData] = useState(COMPANY_DATA);
+  
+  // Edit tracking modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingCompany, setEditingCompany] = useState<string | null>(null);
   
   const { preferences, loading: prefsLoading } = useUserPreferences();
   
@@ -68,14 +78,17 @@ export default function CalendarTab() {
 
   // Build company list from mock data
   const allCompanies: TrackedCompany[] = useMemo(() => {
-    return Object.values(COMPANY_DATA).map(company => ({
+    return Object.values(companyData).map(company => ({
       ...company,
       isTracked: trackedCompanies.has(company.name),
+      isArchived: archivedCompanies.has(company.name),
     }));
-  }, [trackedCompanies]);
+  }, [companyData, trackedCompanies, archivedCompanies]);
 
   const displayedCompanies = useMemo(() => {
-    let list = allCompanies.filter(c => c.isTracked);
+    let list = allCompanies.filter(c => 
+      trackerTab === "tracking" ? c.isTracked && !c.isArchived : c.isArchived
+    );
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       list = list.filter(c =>
@@ -84,16 +97,46 @@ export default function CalendarTab() {
       );
     }
     return list;
-  }, [allCompanies, searchQuery]);
+  }, [allCompanies, searchQuery, trackerTab]);
 
-  const toggleTracking = (name: string) => {
+  const stopTracking = (name: string) => {
     setTrackedCompanies(prev => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      next.delete(name);
       return next;
     });
+    setArchivedCompanies(prev => new Set([...prev, name]));
   };
+
+  const resumeTracking = (name: string) => {
+    setArchivedCompanies(prev => {
+      const next = new Set(prev);
+      next.delete(name);
+      return next;
+    });
+    setTrackedCompanies(prev => new Set([...prev, name]));
+  };
+
+  const openEditModal = (name: string) => {
+    setEditingCompany(name);
+    setEditModalOpen(true);
+  };
+
+  const handleSaveTracking = (roles: string[], seasons: string[]) => {
+    if (!editingCompany) return;
+    setCompanyData(prev => ({
+      ...prev,
+      [editingCompany]: {
+        ...prev[editingCompany],
+        roles,
+        seasons,
+      },
+    }));
+    setEditingCompany(null);
+  };
+
+  const trackingCount = allCompanies.filter(c => c.isTracked && !c.isArchived).length;
+  const archivedCount = archivedCompanies.size;
 
   const prepItems = agendaItems.filter(e => e.state === "prepare");
   const liveItems = agendaItems.filter(e => e.state === "live");
@@ -108,6 +151,8 @@ export default function CalendarTab() {
       </div>
     );
   }
+
+  const currentEditingData = editingCompany ? companyData[editingCompany] : null;
 
   return (
     <div className="space-y-6">
@@ -273,18 +318,41 @@ export default function CalendarTab() {
       ) : (
         /* COMPANY TRACKER MODE */
         <div className="space-y-4">
-          {/* Search bar */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search tracked companies…" 
-              value={searchQuery} 
-              onChange={e => setSearchQuery(e.target.value)} 
-              className="pl-9 bg-white" 
-            />
+          {/* Tracking / Archived tabs */}
+          <div className="flex items-center gap-4">
+            <div className="flex gap-1 p-1 bg-muted rounded-lg">
+              <button
+                onClick={() => setTrackerTab("tracking")}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                  trackerTab === "tracking" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Tracking
+              </button>
+              <button
+                onClick={() => setTrackerTab("archived")}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                  trackerTab === "archived" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                Archived
+              </button>
+            </div>
+            {/* Search bar */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder={trackerTab === "tracking" ? "Search tracked companies…" : "Search archived companies…"}
+                value={searchQuery} 
+                onChange={e => setSearchQuery(e.target.value)} 
+                className="pl-9 bg-white" 
+              />
+            </div>
           </div>
 
-          {/* Tracked companies list */}
+          {/* Company list */}
           {displayedCompanies.length > 0 ? (
             <div className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden divide-y divide-border">
               {displayedCompanies.map((company) => {
@@ -294,50 +362,54 @@ export default function CalendarTab() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-semibold">{company.name}</h3>
-                        <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${urgency.bg} ${urgency.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
-                          {urgency.label}
-                        </span>
+                        {trackerTab === "tracking" && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${urgency.bg} ${urgency.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                            {urgency.label}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-sm text-muted-foreground">{company.roles.join(", ")} · {company.window}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {company.roles.join(", ")} · {company.seasons.join(", ")} · {company.window}
+                      </p>
                     </div>
                     
                     <div className="flex items-center gap-2 shrink-0">
-                      {/* Quick Track/Stop button */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => toggleTracking(company.name)}
-                        className={cn(
-                          "gap-1.5 text-xs",
-                          company.isTracked 
-                            ? "text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive" 
-                            : "text-primary border-primary/30 hover:bg-primary/10"
-                        )}
-                      >
-                        {company.isTracked ? (
-                          <>
-                            <BookmarkMinus className="w-3.5 h-3.5" />
-                            Stop tracking
-                          </>
-                        ) : (
-                          <>
-                            <BookmarkPlus className="w-3.5 h-3.5" />
-                            Track
-                          </>
-                        )}
-                      </Button>
+                      {/* Stop / Resume tracking button */}
+                      {trackerTab === "tracking" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => stopTracking(company.name)}
+                          className="gap-1.5 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Ban className="w-3.5 h-3.5" />
+                          Stop tracking
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => resumeTracking(company.name)}
+                          className="gap-1.5 text-xs text-primary border-primary/30 hover:bg-primary/10"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          Resume tracking
+                        </Button>
+                      )}
 
-                      {/* More options menu */}
+                      {/* More options menu - only Edit tracking */}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button className="p-2 rounded-lg hover:bg-muted transition-colors">
                             <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
                           </button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>View details</DropdownMenuItem>
-                          <DropdownMenuItem>Set reminder</DropdownMenuItem>
+                        <DropdownMenuContent align="end" className="bg-popover">
+                          <DropdownMenuItem onClick={() => openEditModal(company.name)}>
+                            <Pencil className="w-4 h-4 mr-2" />
+                            Edit tracking
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -349,15 +421,31 @@ export default function CalendarTab() {
             <div className="bg-card border border-border rounded-2xl p-8 text-center text-muted-foreground">
               {searchQuery.trim() 
                 ? "No companies match your search" 
-                : "No companies tracked yet. Save listings to track them here."}
+                : trackerTab === "tracking" 
+                  ? "No companies tracked yet. Save listings to track them here."
+                  : "No archived companies yet."}
             </div>
           )}
 
           {/* Summary */}
           <p className="text-xs text-muted-foreground text-center">
-            Tracking {trackedCompanies.size} {trackedCompanies.size === 1 ? "company" : "companies"}
+            {trackerTab === "tracking" 
+              ? `Tracking ${trackingCount} ${trackingCount === 1 ? "company" : "companies"}`
+              : `Archived ${archivedCount} ${archivedCount === 1 ? "company" : "companies"}`}
           </p>
         </div>
+      )}
+
+      {/* Edit tracking modal */}
+      {currentEditingData && (
+        <EditTrackingModal
+          open={editModalOpen}
+          onOpenChange={setEditModalOpen}
+          companyName={editingCompany || ""}
+          initialRoles={currentEditingData.roles}
+          initialSeasons={currentEditingData.seasons}
+          onSave={handleSaveTracking}
+        />
       )}
     </div>
   );
