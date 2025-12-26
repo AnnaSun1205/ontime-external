@@ -126,6 +126,102 @@ export type Database = {
           },
         ]
       }
+      opening_signals: {
+        Row: {
+          apply_url: string
+          company_name: string
+          created_at: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          location: string | null
+          role_title: string
+          signal_type: string
+          source: string
+          term: string
+          updated_at: string
+        }
+        Insert: {
+          apply_url: string
+          company_name: string
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          location?: string | null
+          role_title: string
+          signal_type?: string
+          source?: string
+          term?: string
+          updated_at?: string
+        }
+        Update: {
+          apply_url?: string
+          company_name?: string
+          created_at?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          location?: string | null
+          role_title?: string
+          signal_type?: string
+          source?: string
+          term?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      openings: {
+        Row: {
+          apply_url: string
+          company_name: string
+          confidence: number
+          created_at: string
+          event_type: string
+          id: string
+          last_verified_at: string
+          location: string | null
+          open_date: string | null
+          raw_text: string | null
+          role_title: string
+          source_url: string
+          term: string
+          updated_at: string
+        }
+        Insert: {
+          apply_url: string
+          company_name: string
+          confidence?: number
+          created_at?: string
+          event_type?: string
+          id?: string
+          last_verified_at?: string
+          location?: string | null
+          open_date?: string | null
+          raw_text?: string | null
+          role_title: string
+          source_url: string
+          term?: string
+          updated_at?: string
+        }
+        Update: {
+          apply_url?: string
+          company_name?: string
+          confidence?: number
+          created_at?: string
+          event_type?: string
+          id?: string
+          last_verified_at?: string
+          location?: string | null
+          open_date?: string | null
+          raw_text?: string | null
+          role_title?: string
+          source_url?: string
+          term?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
