@@ -11,7 +11,7 @@ import AuthCallback from "./pages/AuthCallback";
 import AppLayout from "./pages/app/AppLayout";
 import CalendarTab from "./pages/app/CalendarTab";
 import InboxTab from "./pages/app/InboxTab";
-import CompaniesTab from "./pages/app/CompaniesTab";
+import ListingsTab from "./pages/app/ListingsTab";
 import SettingsTab from "./pages/app/SettingsTab";
 import NotFound from "./pages/NotFound";
 
@@ -31,8 +31,8 @@ const App = () => (
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<CalendarTab />} />
+            <Route path="listings" element={<ListingsTab />} />
             <Route path="inbox" element={<InboxTab />} />
-            <Route path="companies" element={<CompaniesTab />} />
             <Route path="settings" element={<SettingsTab />} />
           </Route>
           <Route path="*" element={<NotFound />} />
