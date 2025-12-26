@@ -126,6 +126,51 @@ export type Database = {
           },
         ]
       }
+      inactive_role_signals: {
+        Row: {
+          apply_url: string | null
+          company_name: string
+          created_at: string | null
+          first_seen_at: string | null
+          id: string
+          last_seen_at: string | null
+          location: string | null
+          role_title: string
+          source: string | null
+          status: string | null
+          term: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          apply_url?: string | null
+          company_name: string
+          created_at?: string | null
+          first_seen_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          location?: string | null
+          role_title: string
+          source?: string | null
+          status?: string | null
+          term?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          apply_url?: string | null
+          company_name?: string
+          created_at?: string | null
+          first_seen_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          location?: string | null
+          role_title?: string
+          source?: string | null
+          status?: string | null
+          term?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       opening_signals: {
         Row: {
           apply_url: string
@@ -168,6 +213,51 @@ export type Database = {
           source?: string
           term?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      opening_signals_history: {
+        Row: {
+          apply_url: string | null
+          company_name: string
+          created_at: string | null
+          first_seen_at: string | null
+          id: string
+          last_seen_at: string | null
+          location: string | null
+          role_title: string
+          season_year: number
+          source: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          apply_url?: string | null
+          company_name: string
+          created_at?: string | null
+          first_seen_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          location?: string | null
+          role_title: string
+          season_year: number
+          source?: string | null
+          status: string
+          updated_at?: string | null
+        }
+        Update: {
+          apply_url?: string | null
+          company_name?: string
+          created_at?: string | null
+          first_seen_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          location?: string | null
+          role_title?: string
+          season_year?: number
+          source?: string | null
+          status?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
