@@ -14,7 +14,7 @@ interface Listing {
   location: string;
   term: string;
   applyUrl: string;
-  lastSeenAt: Date;
+  firstSeenAt: Date; // When job was first detected (stable timestamp for grouping)
 }
 
 type TimeSection = "today" | "last2days" | "earlierThisWeek";
@@ -42,8 +42,8 @@ export default function ListingsTab() {
         
         const { data, error: queryError } = await supabase
           .from('opening_signals')
-          .select('id, company_name, role_title, location, term, apply_url, last_seen_at')
-          .order('last_seen_at', { ascending: false })
+          .select('id, company_name, role_title, location, term, apply_url, first_seen_at')
+          .order('first_seen_at', { ascending: false })
           .limit(200);
 
         if (queryError) {
@@ -76,7 +76,7 @@ export default function ListingsTab() {
           location: row.location || 'Remote',
           term: row.term || '',
           applyUrl: row.apply_url || '',
-          lastSeenAt: new Date(row.last_seen_at),
+          firstSeenAt: new Date(row.first_seen_at),
         }));
 
         setListings(mappedListings);
@@ -114,13 +114,13 @@ export default function ListingsTab() {
       earlierThisWeek: [],
     };
 
-    // Sort by recency first
+    // Sort by first_seen_at (when job was first detected)
     const sorted = [...filteredListings].sort(
-      (a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime()
+      (a, b) => b.firstSeenAt.getTime() - a.firstSeenAt.getTime()
     );
 
     for (const listing of sorted) {
-      const listingDate = listing.lastSeenAt;
+      const listingDate = listing.firstSeenAt;
 
       if (isAfter(listingDate, todayStart) || isEqual(listingDate, todayStart)) {
         groups.today.push(listing);
