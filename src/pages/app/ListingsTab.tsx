@@ -76,7 +76,7 @@ export default function ListingsTab() {
           location: row.location || 'Remote',
           term: row.term || '',
           applyUrl: row.apply_url || '',
-          firstSeenAt: new Date(row.first_seen_at),
+          firstSeenAt: row.first_seen_at ? new Date(row.first_seen_at) : new Date(),
         }));
 
         setListings(mappedListings);
@@ -115,9 +115,11 @@ export default function ListingsTab() {
     };
 
     // Sort by first_seen_at (when job was first detected)
-    const sorted = [...filteredListings].sort(
-      (a, b) => b.firstSeenAt.getTime() - a.firstSeenAt.getTime()
-    );
+    const sorted = [...filteredListings].sort((a, b) => {
+      const timeA = a.firstSeenAt?.getTime() ?? 0;
+      const timeB = b.firstSeenAt?.getTime() ?? 0;
+      return timeB - timeA;
+    });
 
     for (const listing of sorted) {
       const listingDate = listing.firstSeenAt;
