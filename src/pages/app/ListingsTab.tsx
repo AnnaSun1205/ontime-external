@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { startOfDay, subDays, startOfWeek, isAfter, isEqual } from "date-fns";
 
 interface Listing {
   id: string;
@@ -13,6 +14,15 @@ interface Listing {
   location: string;
   term: string;
   applyUrl: string;
+  lastSeenAt: Date;
+}
+
+type TimeSection = "today" | "last2days" | "earlierThisWeek";
+
+interface GroupedListings {
+  today: Listing[];
+  last2days: Listing[];
+  earlierThisWeek: Listing[];
 }
 
 export default function ListingsTab() {
@@ -66,6 +76,7 @@ export default function ListingsTab() {
           location: row.location || 'Remote',
           term: row.term || '',
           applyUrl: row.apply_url || '',
+          lastSeenAt: new Date(row.last_seen_at),
         }));
 
         setListings(mappedListings);
@@ -90,6 +101,45 @@ export default function ListingsTab() {
         listing.location.toLowerCase().includes(query)
     );
   }, [searchQuery, listings]);
+
+  const groupedListings = useMemo((): GroupedListings => {
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const twoDaysAgoStart = startOfDay(subDays(now, 2));
+    const weekStart = startOfWeek(now, { weekStartsOn: 0 }); // Sunday
+
+    const groups: GroupedListings = {
+      today: [],
+      last2days: [],
+      earlierThisWeek: [],
+    };
+
+    // Sort by recency first
+    const sorted = [...filteredListings].sort(
+      (a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime()
+    );
+
+    for (const listing of sorted) {
+      const listingDate = listing.lastSeenAt;
+
+      if (isAfter(listingDate, todayStart) || isEqual(listingDate, todayStart)) {
+        groups.today.push(listing);
+      } else if (isAfter(listingDate, twoDaysAgoStart) || isEqual(listingDate, twoDaysAgoStart)) {
+        groups.last2days.push(listing);
+      } else if (isAfter(listingDate, weekStart) || isEqual(listingDate, weekStart)) {
+        groups.earlierThisWeek.push(listing);
+      }
+      // Older listings are ignored for now
+    }
+
+    return groups;
+  }, [filteredListings]);
+
+  const sections: { key: TimeSection; title: string; listings: Listing[] }[] = [
+    { key: "today", title: "Today", listings: groupedListings.today },
+    { key: "last2days", title: "Last 2 Days", listings: groupedListings.last2days },
+    { key: "earlierThisWeek", title: "Earlier This Week", listings: groupedListings.earlierThisWeek },
+  ];
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
@@ -138,7 +188,7 @@ export default function ListingsTab() {
         </div>
       )}
 
-      {/* Listings grid */}
+      {/* Listings by section */}
       {!loading && !error && (
         <>
           {filteredListings.length === 0 ? (
@@ -148,55 +198,68 @@ export default function ListingsTab() {
                 : "No listings match your search."}
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredListings.map((listing) => {
-                const isSaved = savedListings.has(listing.id);
+            <div className="space-y-8">
+              {sections.map((section) => {
+                if (section.listings.length === 0) return null;
+                
                 return (
-                  <div
-                    key={listing.id}
-                    className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold text-base">{listing.company}</h3>
-                        <p className="text-sm text-foreground/80">{listing.role}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleSave(listing)}
-                        className={cn(
-                          "h-8 w-8 shrink-0",
-                          isSaved && "text-primary"
-                        )}
-                      >
-                        <Bookmark
-                          className={cn("w-4 h-4", isSaved && "fill-current")}
-                        />
-                      </Button>
-                    </div>
+                  <div key={section.key}>
+                    <h2 className="text-sm font-semibold text-muted-foreground mb-4">
+                      {section.title} ({section.listings.length})
+                    </h2>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      {section.listings.map((listing) => {
+                        const isSaved = savedListings.has(listing.id);
+                        return (
+                          <div
+                            key={listing.id}
+                            className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div>
+                                <h3 className="font-semibold text-base">{listing.company}</h3>
+                                <p className="text-sm text-foreground/80">{listing.role}</p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleSave(listing)}
+                                className={cn(
+                                  "h-8 w-8 shrink-0",
+                                  isSaved && "text-primary"
+                                )}
+                              >
+                                <Bookmark
+                                  className={cn("w-4 h-4", isSaved && "fill-current")}
+                                />
+                              </Button>
+                            </div>
 
-                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
-                      <MapPin className="w-3.5 h-3.5" />
-                      {listing.location}
-                    </div>
+                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
+                              <MapPin className="w-3.5 h-3.5" />
+                              {listing.location}
+                            </div>
 
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
-                        {listing.term}
-                      </span>
-                      {listing.applyUrl ? (
-                        <a
-                          href={listing.applyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                        >
-                          Apply <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">No URL</span>
-                      )}
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
+                                {listing.term}
+                              </span>
+                              {listing.applyUrl ? (
+                                <a
+                                  href={listing.applyUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                                >
+                                  Apply <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">No URL</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
