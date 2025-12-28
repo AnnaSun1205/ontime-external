@@ -31,6 +31,7 @@ export default function ListingsTab() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TimeSection>("today");
 
   useEffect(() => {
     async function fetchListings() {
@@ -137,11 +138,13 @@ export default function ListingsTab() {
     return groups;
   }, [filteredListings]);
 
-  const sections: { key: TimeSection; title: string; listings: Listing[] }[] = [
-    { key: "today", title: "Today", listings: groupedListings.today },
-    { key: "last2days", title: "Last 2 Days", listings: groupedListings.last2days },
-    { key: "earlierThisWeek", title: "Earlier This Week", listings: groupedListings.earlierThisWeek },
+  const tabs: { key: TimeSection; label: string; count: number }[] = [
+    { key: "today", label: "Today", count: groupedListings.today.length },
+    { key: "last2days", label: "Last 2 Days", count: groupedListings.last2days.length },
+    { key: "earlierThisWeek", label: "This Week", count: groupedListings.earlierThisWeek.length },
   ];
+
+  const activeListings = groupedListings[activeTab];
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
@@ -190,7 +193,27 @@ export default function ListingsTab() {
         </div>
       )}
 
-      {/* Listings by section */}
+      {/* Segmented control for recency tabs */}
+      {!loading && !error && filteredListings.length > 0 && (
+        <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                "px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                activeTab === tab.key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Listings grid */}
       {!loading && !error && (
         <>
           {filteredListings.length === 0 ? (
@@ -199,69 +222,60 @@ export default function ListingsTab() {
                 ? "No listings found in the database."
                 : "No listings match your search."}
             </div>
+          ) : activeListings.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No listings in this time period.
+            </div>
           ) : (
-            <div className="space-y-8">
-              {sections.map((section) => {
-                if (section.listings.length === 0) return null;
-                
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {activeListings.map((listing) => {
+                const isSaved = savedListings.has(listing.id);
                 return (
-                  <div key={section.key}>
-                    <h2 className="text-sm font-semibold text-muted-foreground mb-4">
-                      {section.title} ({section.listings.length})
-                    </h2>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {section.listings.map((listing) => {
-                        const isSaved = savedListings.has(listing.id);
-                        return (
-                          <div
-                            key={listing.id}
-                            className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
-                          >
-                            <div className="flex items-start justify-between mb-3">
-                              <div>
-                                <h3 className="font-semibold text-base">{listing.company}</h3>
-                                <p className="text-sm text-foreground/80">{listing.role}</p>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleSave(listing)}
-                                className={cn(
-                                  "h-8 w-8 shrink-0",
-                                  isSaved && "text-primary"
-                                )}
-                              >
-                                <Bookmark
-                                  className={cn("w-4 h-4", isSaved && "fill-current")}
-                                />
-                              </Button>
-                            </div>
+                  <div
+                    key={listing.id}
+                    className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className="font-semibold text-base">{listing.company}</h3>
+                        <p className="text-sm text-foreground/80">{listing.role}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSave(listing)}
+                        className={cn(
+                          "h-8 w-8 shrink-0",
+                          isSaved && "text-primary"
+                        )}
+                      >
+                        <Bookmark
+                          className={cn("w-4 h-4", isSaved && "fill-current")}
+                        />
+                      </Button>
+                    </div>
 
-                            <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
-                              <MapPin className="w-3.5 h-3.5" />
-                              {listing.location}
-                            </div>
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {listing.location}
+                    </div>
 
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
-                                {listing.term}
-                              </span>
-                              {listing.applyUrl ? (
-                                <a
-                                  href={listing.applyUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                                >
-                                  Apply <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">No URL</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
+                        {listing.term}
+                      </span>
+                      {listing.applyUrl ? (
+                        <a
+                          href={listing.applyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        >
+                          Apply <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No URL</span>
+                      )}
                     </div>
                   </div>
                 );
