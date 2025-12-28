@@ -184,7 +184,7 @@ export default function SettingsTab() {
         <div className="space-y-2">
           <Label>How early do you want prep alerts?</Label>
           <Select value={prepTiming} onValueChange={setPrepTiming}>
-            <SelectTrigger className="w-full bg-background border-input">
+            <SelectTrigger className="w-full bg-white dark:bg-slate-900 border-input">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-popover border border-border">
