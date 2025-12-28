@@ -113,7 +113,7 @@ export default function SettingsTab() {
           <Label>Email address</Label>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <div className="flex items-center justify-between py-2">
+        <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
           <div>
             <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
