@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
-import { Search, ExternalLink, Bookmark, MapPin } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Search, ExternalLink, Bookmark, MapPin, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Listing {
   id: string;
@@ -14,44 +15,81 @@ interface Listing {
   applyUrl: string;
 }
 
-// Mock listings data
-const MOCK_LISTINGS: Listing[] = [
-  { id: "1", company: "Google", role: "Software Engineering Intern", location: "Mountain View, CA", term: "Summer 2025", applyUrl: "https://careers.google.com" },
-  { id: "2", company: "Meta", role: "Software Engineer Intern", location: "Menlo Park, CA", term: "Summer 2025", applyUrl: "https://careers.meta.com" },
-  { id: "3", company: "Apple", role: "Software Engineering Internship", location: "Cupertino, CA", term: "Summer 2025", applyUrl: "https://jobs.apple.com" },
-  { id: "4", company: "Amazon", role: "SDE Intern", location: "Seattle, WA", term: "Summer 2025", applyUrl: "https://amazon.jobs" },
-  { id: "5", company: "Microsoft", role: "Software Engineer Intern", location: "Redmond, WA", term: "Summer 2025", applyUrl: "https://careers.microsoft.com" },
-  { id: "6", company: "Netflix", role: "Software Engineer Intern", location: "Los Gatos, CA", term: "Summer 2025", applyUrl: "https://jobs.netflix.com" },
-  { id: "7", company: "Stripe", role: "Software Engineering Intern", location: "San Francisco, CA", term: "Summer 2025", applyUrl: "https://stripe.com/jobs" },
-  { id: "8", company: "Airbnb", role: "Software Engineer Intern", location: "San Francisco, CA", term: "Summer 2025", applyUrl: "https://careers.airbnb.com" },
-  { id: "9", company: "Uber", role: "Software Engineering Intern", location: "San Francisco, CA", term: "Summer 2025", applyUrl: "https://uber.com/careers" },
-  { id: "10", company: "Lyft", role: "Software Engineer Intern", location: "San Francisco, CA", term: "Summer 2025", applyUrl: "https://lyft.com/careers" },
-  { id: "11", company: "Coinbase", role: "Software Engineer Intern", location: "Remote", term: "Summer 2025", applyUrl: "https://coinbase.com/careers" },
-  { id: "12", company: "Robinhood", role: "Software Engineering Intern", location: "Menlo Park, CA", term: "Summer 2025", applyUrl: "https://robinhood.com/careers" },
-  { id: "13", company: "Databricks", role: "Software Engineer Intern", location: "San Francisco, CA", term: "Summer 2025", applyUrl: "https://databricks.com/careers" },
-  { id: "14", company: "Snowflake", role: "Software Engineering Intern", location: "San Mateo, CA", term: "Summer 2025", applyUrl: "https://snowflake.com/careers" },
-  { id: "15", company: "Palantir", role: "Software Engineer Intern", location: "New York, NY", term: "Summer 2025", applyUrl: "https://palantir.com/careers" },
-  { id: "16", company: "Bloomberg", role: "Software Engineer Intern", location: "New York, NY", term: "Summer 2025", applyUrl: "https://bloomberg.com/careers" },
-  { id: "17", company: "Goldman Sachs", role: "Engineering Analyst Intern", location: "New York, NY", term: "Summer 2025", applyUrl: "https://goldmansachs.com/careers" },
-  { id: "18", company: "JPMorgan", role: "Software Engineer Intern", location: "New York, NY", term: "Summer 2025", applyUrl: "https://careers.jpmorgan.com" },
-  { id: "19", company: "Citadel", role: "Software Engineer Intern", location: "Chicago, IL", term: "Summer 2025", applyUrl: "https://citadel.com/careers" },
-  { id: "20", company: "Jane Street", role: "Software Developer Intern", location: "New York, NY", term: "Summer 2025", applyUrl: "https://janestreet.com/join-jane-street" },
-];
-
 export default function ListingsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [savedListings, setSavedListings] = useState<Set<string>>(new Set());
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchListings() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        console.log("🔍 Fetching listings from opening_signals table...");
+        
+        const { data, error: queryError } = await supabase
+          .from('opening_signals')
+          .select('id, company_name, role_title, location, term, apply_url, last_seen_at')
+          .order('last_seen_at', { ascending: false })
+          .limit(200);
+
+        if (queryError) {
+          console.error("❌ Supabase query error:", queryError);
+          console.error("   Error code:", queryError.code);
+          console.error("   Error message:", queryError.message);
+          console.error("   Error details:", queryError.details);
+          console.error("   Error hint:", queryError.hint);
+          
+          if (queryError.code === '42501' || queryError.message?.includes('permission denied') || queryError.message?.includes('RLS')) {
+            setError(`Permission denied: Missing RLS policy for 'opening_signals' table. Please create a policy that allows SELECT access.`);
+          } else {
+            setError(`Failed to fetch listings: ${queryError.message}`);
+          }
+          return;
+        }
+
+        if (!data) {
+          console.log("⚠️ No data returned from query");
+          setListings([]);
+          return;
+        }
+
+        console.log(`✅ Successfully fetched ${data.length} rows from opening_signals`);
+
+        const mappedListings: Listing[] = data.map((row) => ({
+          id: row.id,
+          company: row.company_name || '',
+          role: row.role_title || '',
+          location: row.location || 'Remote',
+          term: row.term || '',
+          applyUrl: row.apply_url || '',
+        }));
+
+        setListings(mappedListings);
+      } catch (err) {
+        console.error("❌ Unexpected error:", err);
+        setError(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchListings();
+  }, []);
 
   const filteredListings = useMemo(() => {
-    if (!searchQuery.trim()) return MOCK_LISTINGS;
+    if (!searchQuery.trim()) return listings;
     const query = searchQuery.toLowerCase();
-    return MOCK_LISTINGS.filter(
+    return listings.filter(
       (listing) =>
         listing.company.toLowerCase().includes(query) ||
         listing.role.toLowerCase().includes(query) ||
         listing.location.toLowerCase().includes(query)
     );
-  }, [searchQuery]);
+  }, [searchQuery, listings]);
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
@@ -84,62 +122,88 @@ export default function ListingsTab() {
         />
       </div>
 
-      {/* Listings grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredListings.map((listing) => {
-          const isSaved = savedListings.has(listing.id);
-          return (
-            <div
-              key={listing.id}
-              className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-base">{listing.company}</h3>
-                  <p className="text-sm text-foreground/80">{listing.role}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleSave(listing)}
-                  className={cn(
-                    "h-8 w-8 shrink-0",
-                    isSaved && "text-primary"
-                  )}
-                >
-                  <Bookmark
-                    className={cn("w-4 h-4", isSaved && "fill-current")}
-                  />
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
-                <MapPin className="w-3.5 h-3.5" />
-                {listing.location}
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
-                  {listing.term}
-                </span>
-                <a
-                  href={listing.applyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                >
-                  Apply <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {filteredListings.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          No listings match your search.
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <span className="ml-2 text-muted-foreground">Loading listings...</span>
         </div>
+      )}
+
+      {/* Error state */}
+      {error && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-6">
+          <p className="text-destructive font-medium">Error loading listings</p>
+          <p className="text-sm text-destructive/80 mt-1">{error}</p>
+        </div>
+      )}
+
+      {/* Listings grid */}
+      {!loading && !error && (
+        <>
+          {filteredListings.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              {listings.length === 0 
+                ? "No listings found in the database."
+                : "No listings match your search."}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredListings.map((listing) => {
+                const isSaved = savedListings.has(listing.id);
+                return (
+                  <div
+                    key={listing.id}
+                    className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div>
+                        <h3 className="font-semibold text-base">{listing.company}</h3>
+                        <p className="text-sm text-foreground/80">{listing.role}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleSave(listing)}
+                        className={cn(
+                          "h-8 w-8 shrink-0",
+                          isSaved && "text-primary"
+                        )}
+                      >
+                        <Bookmark
+                          className={cn("w-4 h-4", isSaved && "fill-current")}
+                        />
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {listing.location}
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
+                        {listing.term}
+                      </span>
+                      {listing.applyUrl ? (
+                        <a
+                          href={listing.applyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+                        >
+                          Apply <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No URL</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
