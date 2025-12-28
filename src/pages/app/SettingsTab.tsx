@@ -120,25 +120,23 @@ export default function SettingsTab() {
       <h1 className="text-2xl font-bold">Settings</h1>
       
       {/* Email & Quiet Mode */}
-      <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
-        <div className="space-y-2">
-          <Label>Email address</Label>
-          <Input 
-            type="email" 
-            value={emailLoading ? "Loading..." : (email ?? "Not signed in")} 
-            readOnly 
-            className="bg-background border-input"
-          />
-        </div>
-        <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+        <h2 className="font-semibold text-lg">Email address</h2>
+        <Input 
+          type="email" 
+          value={emailLoading ? "Loading..." : (email ?? "Not signed in")} 
+          readOnly 
+          className="bg-white dark:bg-slate-900 border-input"
+        />
+        <div className="flex items-center justify-between py-2">
           <div>
             <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
         </div>
-        <div className="space-y-2">
-          <Label>Email window</Label>
+        <div className="py-2">
+          <p className="font-medium">Email window</p>
           <p className="text-sm text-muted-foreground">Mon–Fri, 8am–5pm local time</p>
         </div>
       </div>
