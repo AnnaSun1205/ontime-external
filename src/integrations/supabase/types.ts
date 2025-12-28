@@ -178,7 +178,9 @@ export type Database = {
           created_at: string
           first_seen_at: string
           id: string
+          is_active: boolean | null
           last_seen_at: string
+          listing_hash: string | null
           location: string | null
           role_title: string
           signal_type: string
@@ -192,7 +194,9 @@ export type Database = {
           created_at?: string
           first_seen_at?: string
           id?: string
+          is_active?: boolean | null
           last_seen_at?: string
+          listing_hash?: string | null
           location?: string | null
           role_title: string
           signal_type?: string
@@ -206,7 +210,9 @@ export type Database = {
           created_at?: string
           first_seen_at?: string
           id?: string
+          is_active?: boolean | null
           last_seen_at?: string
+          listing_hash?: string | null
           location?: string | null
           role_title?: string
           signal_type?: string
@@ -428,7 +434,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      call_refresh_opening_signals: { Args: never; Returns: undefined }
+      call_refresh_opening_signals_function: { Args: never; Returns: undefined }
+      compute_listing_hash: {
+        Args: {
+          p_apply_url: string
+          p_company_name: string
+          p_location: string
+          p_role_title: string
+          p_term: string
+        }
+        Returns: string
+      }
+      update_opening_signals_is_active: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
