@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 const COMMON_TIMEZONES = [
   "America/New_York",
@@ -65,7 +66,8 @@ const COMMON_TIMEZONES = [
 ];
 
 export default function SettingsTab() {
-  const [email, setEmail] = useState("you@example.com");
+  const [email, setEmail] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState(true);
   const [quietMode, setQuietMode] = useState(true);
   
   // Notification preferences
@@ -95,6 +97,16 @@ export default function SettingsTab() {
     setTimezone(detectedTimezone);
   }, []);
 
+  useEffect(() => {
+    // Fetch authenticated user's email
+    const fetchUserEmail = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setEmail(user?.email ?? null);
+      setEmailLoading(false);
+    };
+    fetchUserEmail();
+  }, []);
+
   const handleDownloadData = () => {
     toast.success("Your data export has been initiated. You'll receive an email shortly.");
   };
@@ -111,7 +123,12 @@ export default function SettingsTab() {
       <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
         <div className="space-y-2">
           <Label>Email address</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input 
+            type="email" 
+            value={emailLoading ? "Loading..." : (email ?? "Not signed in")} 
+            readOnly 
+            className="bg-background border-input"
+          />
         </div>
         <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
           <div>
@@ -167,10 +184,10 @@ export default function SettingsTab() {
         <div className="space-y-2">
           <Label>How early do you want prep alerts?</Label>
           <Select value={prepTiming} onValueChange={setPrepTiming}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full bg-background border-input">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-popover border border-border">
               <SelectItem value="3">3 days before</SelectItem>
               <SelectItem value="7">7 days before</SelectItem>
               <SelectItem value="14">14 days before</SelectItem>
