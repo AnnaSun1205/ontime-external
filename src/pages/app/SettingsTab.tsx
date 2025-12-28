@@ -129,7 +129,7 @@ export default function SettingsTab() {
           className="bg-white dark:bg-slate-900 border-input"
         />
         <div className="flex items-center justify-between py-2">
-          <div>
+          <div className={`transition-opacity duration-300 ${!quietMode ? 'opacity-50' : ''}`}>
             <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
@@ -146,28 +146,28 @@ export default function SettingsTab() {
         <h2 className="font-semibold text-lg">Notification preferences</h2>
         <div className="space-y-3">
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!prepReminders ? 'opacity-50' : ''}`}>
               <p className="font-medium">Prep reminders</p>
               <p className="text-sm text-muted-foreground">Get reminded to prepare before deadlines</p>
             </div>
             <Switch checked={prepReminders} onCheckedChange={setPrepReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!liveAlerts ? 'opacity-50' : ''}`}>
               <p className="font-medium">Live opening alerts</p>
               <p className="text-sm text-muted-foreground">Notified when applications go live</p>
             </div>
             <Switch checked={liveAlerts} onCheckedChange={setLiveAlerts} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!deadlineReminders ? 'opacity-50' : ''}`}>
               <p className="font-medium">Deadline reminders</p>
               <p className="text-sm text-muted-foreground">Alerts before application deadlines</p>
             </div>
             <Switch checked={deadlineReminders} onCheckedChange={setDeadlineReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!fyiUpdates ? 'opacity-50' : ''}`}>
               <p className="font-medium">FYI updates</p>
               <p className="text-sm text-muted-foreground">General updates and tips</p>
             </div>
