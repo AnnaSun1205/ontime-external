@@ -23,6 +23,28 @@ interface ParseResult {
 }
 
 /**
+ * Sanitizes role title by removing emojis, term patterns, and normalizing whitespace
+ */
+function sanitizeRoleTitle(roleTitle: string): string {
+  if (!roleTitle) return roleTitle;
+
+  let s = roleTitle;
+
+  // 1) Remove term patterns like "Summer 2026", "Fall 2027", etc.
+  s = s.replace(/\b(Spring|Summer|Fall|Autumn|Winter)\s*(20\d{2})\b/gi, "");
+
+  // 2) Remove emojis (covers most pictographs)
+  // Note: requires Unicode property escapes support (Deno/Node 16+ usually fine)
+  s = s.replace(/\p{Extended_Pictographic}+/gu, "");
+
+  // 3) Remove leftover separators that often surround emojis/terms
+  s = s.replace(/[–—-]+\s*/g, " "); // normalize dashes
+  s = s.replace(/\s{2,}/g, " ").trim();
+
+  return s;
+}
+
+/**
  * Computes SHA-256 hash of a string
  */
 async function sha256(message: string): Promise<string> {
@@ -77,7 +99,7 @@ async function tryParseStructuredSource(url: string): Promise<ParsedRow[] | null
         if (Array.isArray(data)) {
           return data.map((item: any) => ({
             company_name: item.company || item.company_name || '',
-            role_title: item.role || item.role_title || '',
+            role_title: sanitizeRoleTitle(item.role || item.role_title || ''),
             location: item.location || null,
             apply_url: item.apply_url || item.url || null,
           })).filter((r: ParsedRow) => r.company_name && r.role_title);
@@ -103,7 +125,7 @@ async function tryParseStructuredSource(url: string): Promise<ParsedRow[] | null
             const cols = line.split(',').map(c => c.trim());
             return {
               company_name: cols[companyIdx] || '',
-              role_title: cols[roleIdx] || '',
+              role_title: sanitizeRoleTitle(cols[roleIdx] || ''),
               location: locationIdx >= 0 ? (cols[locationIdx] || null) : null,
               apply_url: urlIdx >= 0 ? (cols[urlIdx] || null) : null,
             };
@@ -234,7 +256,8 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         currentCompany = companyName;
       }
       
-      const roleTitle = cells[roleIdx]?.replace(/<[^>]+>/g, '').trim() || '';
+      let roleTitle = cells[roleIdx]?.replace(/<[^>]+>/g, '').trim() || '';
+      roleTitle = sanitizeRoleTitle(roleTitle);
       const location = cells[locationIdx]?.replace(/<[^>]+>/g, '').trim() || null;
       
       // Application column should have the apply URL
@@ -256,6 +279,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       }
       
       // Clean up values (companyName already cleaned above)
+      // roleTitle is already sanitized above, just ensure it's trimmed
       const roleTitleClean = roleTitle.trim();
       
       // Validate we have required fields
@@ -527,9 +551,16 @@ serve(async (req) => {
     // Compute listing_hash for each row and prepare records
     const activeRecords = await Promise.all(
       parsedRows.map(async (row) => {
+        // Final sanitization pass: remove term if still present, then sanitize
+        let finalRoleTitle = row.role_title;
+        if (term) {
+          finalRoleTitle = finalRoleTitle.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '').trim();
+        }
+        finalRoleTitle = sanitizeRoleTitle(finalRoleTitle);
+        
         const listingHash = await computeListingHash(
           row.company_name,
-          row.role_title,
+          finalRoleTitle,
           row.location,
           term,
           row.apply_url || ''
@@ -537,7 +568,7 @@ serve(async (req) => {
         
         return {
           company_name: row.company_name,
-          role_title: row.role_title,
+          role_title: finalRoleTitle,
           location: row.location,
           apply_url: row.apply_url,
           source: 'simplifyjobs_github',
