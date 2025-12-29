@@ -350,6 +350,7 @@ export type Database = {
           has_onboarded: boolean | null
           id: string
           last_login: string | null
+          last_seen_listings_at: string | null
           quiet_mode: boolean | null
           selected_companies: string[] | null
           selected_regions: string[] | null
@@ -365,6 +366,7 @@ export type Database = {
           has_onboarded?: boolean | null
           id?: string
           last_login?: string | null
+          last_seen_listings_at?: string | null
           quiet_mode?: boolean | null
           selected_companies?: string[] | null
           selected_regions?: string[] | null
@@ -380,6 +382,7 @@ export type Database = {
           has_onboarded?: boolean | null
           id?: string
           last_login?: string | null
+          last_seen_listings_at?: string | null
           quiet_mode?: boolean | null
           selected_companies?: string[] | null
           selected_regions?: string[] | null
