@@ -414,19 +414,29 @@ serve(async (req) => {
   };
   
   try {
+    // Authentication check - require service role key in Authorization header
+    const authHeader = req.headers.get('Authorization');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!authHeader || authHeader !== `Bearer ${supabaseServiceKey}`) {
+      console.log('❌ Unauthorized request - missing or invalid Authorization header');
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Unauthorized' }),
+        { 
+          status: 401,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
     // Get Supabase client with service role key
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      const error = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables';
-      debugInfo.error = error;
+      const error = 'Missing required environment variables';
+      console.log(`❌ ${error}`);
       return new Response(
-        JSON.stringify({ 
-          ok: false, 
-          error,
-          debug: debugInfo
-        }),
+        JSON.stringify({ ok: false, error }),
         { 
           status: 500,
           headers: { 'Content-Type': 'application/json' }
