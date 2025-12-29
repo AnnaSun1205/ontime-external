@@ -15,6 +15,7 @@ interface Listing {
   term: string;
   applyUrl: string;
   firstSeenAt: Date;
+  lastSeenAt: Date;
   country: "canada" | "us";
 }
 
@@ -106,9 +107,9 @@ export default function ListingsTab() {
         
         const { data, error: queryError } = await supabase
           .from('opening_signals')
-          .select('id, company_name, role_title, location, term, apply_url, first_seen_at')
-          .order('first_seen_at', { ascending: false })
-          .limit(500);
+          .select('id, company_name, role_title, location, term, apply_url, first_seen_at, last_seen_at, is_active')
+          .eq('is_active', true)
+          .order('last_seen_at', { ascending: false });
 
         if (queryError) {
           if (queryError.code === '42501' || queryError.message?.includes('permission denied') || queryError.message?.includes('RLS')) {
@@ -132,6 +133,7 @@ export default function ListingsTab() {
           term: row.term || '',
           applyUrl: row.apply_url || '',
           firstSeenAt: row.first_seen_at ? new Date(row.first_seen_at) : new Date(),
+          lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at) : new Date(),
           country: classifyCountry(row.location || ''),
         }));
 
@@ -176,9 +178,10 @@ export default function ListingsTab() {
       all: [],
     };
 
+    // Sort by lastSeenAt (newest first)
     const sorted = [...filteredListings].sort((a, b) => {
-      const timeA = a.firstSeenAt?.getTime() ?? 0;
-      const timeB = b.firstSeenAt?.getTime() ?? 0;
+      const timeA = a.lastSeenAt?.getTime() ?? 0;
+      const timeB = b.lastSeenAt?.getTime() ?? 0;
       return timeB - timeA;
     });
 
