@@ -448,6 +448,32 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         }
       }
       
+      // If age is missing or "0d", explicitly set age_days = 0 and posted_at = now()
+      // This ensures posted_at and age_days are always written together
+      if (ageDays === null && postedAt === null) {
+        ageDays = 0;
+        postedAt = new Date().toISOString();
+        console.log(`[DEBUG] Age missing or empty, defaulting to age_days=0, posted_at=now()`);
+      }
+      
+      // Ensure posted_at and age_days are always set together
+      // If posted_at is set but age_days is null, calculate age_days from posted_at
+      if (postedAt !== null && ageDays === null) {
+        const now = new Date();
+        const postedDate = new Date(postedAt);
+        const diffTime = now.getTime() - postedDate.getTime();
+        ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        console.log(`[DEBUG] Calculated age_days=${ageDays} from posted_at=${postedAt}`);
+      }
+      
+      // If age_days is set but posted_at is null, calculate posted_at from age_days
+      if (ageDays !== null && postedAt === null) {
+        const now = Date.now();
+        const postedDate = new Date(now - ageDays * 24 * 60 * 60 * 1000);
+        postedAt = postedDate.toISOString();
+        console.log(`[DEBUG] Calculated posted_at=${postedAt} from age_days=${ageDays}`);
+      }
+      
       rows.push({
         company_name: companyName,
         role_title: roleTitleClean,
@@ -753,15 +779,55 @@ serve(async (req) => {
     // Prepare records with first_seen_at for new rows
     // Note: first_seen_at will be preserved by trigger for existing rows
     // Preserve existing posted_at if it exists, otherwise use parsed value
+    // Ensure posted_at and age_days are always written together
     const recordsToUpsert = activeRecords.map(record => {
       const existing = existingPostedAtMap.get(record.listing_hash);
+      
+      // Determine posted_at: preserve existing if it exists, otherwise use parsed value
+      let finalPostedAt: string | null = existing?.posted_at || record.posted_at || null;
+      let finalAgeDays: number | null = null;
+      
+      // If posted_at is set, always calculate age_days from it
+      if (finalPostedAt !== null) {
+        const now = new Date();
+        const postedDate = new Date(finalPostedAt);
+        const diffTime = now.getTime() - postedDate.getTime();
+        finalAgeDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        // Ensure age_days is never negative
+        if (finalAgeDays < 0) {
+          finalAgeDays = 0;
+          // If calculated age is negative, set posted_at to now()
+          finalPostedAt = now.toISOString();
+        }
+      } else if (record.posted_at !== null) {
+        // Use parsed posted_at and calculate age_days
+        finalPostedAt = record.posted_at;
+        const now = new Date();
+        const postedDate = new Date(finalPostedAt);
+        const diffTime = now.getTime() - postedDate.getTime();
+        finalAgeDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (finalAgeDays < 0) {
+          finalAgeDays = 0;
+          finalPostedAt = now.toISOString();
+        }
+      } else if (record.age_days !== null) {
+        // Use parsed age_days and calculate posted_at
+        finalAgeDays = record.age_days;
+        const now = Date.now();
+        const postedDate = new Date(now - finalAgeDays * 24 * 60 * 60 * 1000);
+        finalPostedAt = postedDate.toISOString();
+      } else {
+        // Default: age_days = 0, posted_at = now()
+        finalAgeDays = 0;
+        finalPostedAt = new Date().toISOString();
+      }
+      
       return {
         ...record,
         first_seen_at: now,
-        // Only set posted_at if it doesn't already exist (preserve existing values)
-        posted_at: existing?.posted_at || record.posted_at || null,
-        // Only set age_days if posted_at was set (to keep them in sync)
-        age_days: existing?.posted_at ? existing.age_days : (record.age_days || null)
+        // Always set both posted_at and age_days together
+        posted_at: finalPostedAt,
+        age_days: finalAgeDays
       };
     });
     
