@@ -30,11 +30,25 @@ serve(async (req) => {
   }
 
   try {
-    // Step 1: Verify authentication and get user ID from JWT
+    // Step 1: Extract Bearer token from Authorization header
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.error('Missing authorization header');
       return new Response(
         JSON.stringify({ error: 'Missing authorization header' }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Extract Bearer token
+    const token = authHeader.replace('Bearer ', '');
+    if (!token) {
+      console.error('Invalid authorization header format');
+      return new Response(
+        JSON.stringify({ error: 'Invalid authorization header format' }),
         { 
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -59,16 +73,26 @@ serve(async (req) => {
     }
 
     // Create client with anon key to verify JWT
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
-    // Verify JWT and get user
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    // Verify JWT and get user by passing the token explicitly
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
-    if (authError || !user) {
+    if (authError) {
+      console.error('Auth error:', authError.message);
       return new Response(
-        JSON.stringify({ error: 'Invalid or expired token' }),
+        JSON.stringify({ error: `Invalid or expired token: ${authError.message}` }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    if (!user) {
+      console.error('User not found in token');
+      return new Response(
+        JSON.stringify({ error: 'User not found in token' }),
         { 
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
