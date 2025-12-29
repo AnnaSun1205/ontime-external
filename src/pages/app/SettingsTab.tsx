@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 
 const COMMON_TIMEZONES = [
   "America/New_York",
@@ -66,9 +67,10 @@ const COMMON_TIMEZONES = [
 ];
 
 export default function SettingsTab() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [emailLoading, setEmailLoading] = useState(true);
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("you@example.com");
   const [quietMode, setQuietMode] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Notification preferences
   const [prepReminders, setPrepReminders] = useState(true);
@@ -97,22 +99,66 @@ export default function SettingsTab() {
     setTimezone(detectedTimezone);
   }, []);
 
-  useEffect(() => {
-    // Fetch authenticated user's email
-    const fetchUserEmail = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setEmail(user?.email ?? null);
-      setEmailLoading(false);
-    };
-    fetchUserEmail();
-  }, []);
-
   const handleDownloadData = () => {
     toast.success("Your data export has been initiated. You'll receive an email shortly.");
   };
 
-  const handleDeleteAccount = () => {
-    toast.success("Account deletion request submitted. You'll receive a confirmation email.");
+  /**
+   * Handles account deletion:
+   * 1. Calls Edge Function via supabase.functions.invoke() (automatically includes JWT)
+   * 2. Logs out user
+   * 3. Redirects to landing page
+   * 4. Clears client-side state
+   */
+  const handleDeleteAccount = async () => {
+    console.log('delete clicked');
+    setIsDeleting(true);
+    
+    try {
+      // Get session and verify authentication
+      const { data: sessionData } = await supabase.auth.getSession();
+      console.log('session exists?', !!sessionData.session);
+      
+      if (!sessionData.session) {
+        toast.error("You must be signed in to delete your account");
+        setIsDeleting(false);
+        return;
+      }
+
+      // Call Edge Function using Supabase client (automatically includes JWT)
+      const { data, error } = await supabase.functions.invoke('delete_account');
+      console.log('invoke result', { data, error });
+
+      if (error) {
+        toast.error(`Failed to delete account: ${error.message || 'Unknown error'}`);
+        setIsDeleting(false);
+        return;
+      }
+
+      if (!data || !data.success) {
+        toast.error(data?.error || 'Failed to delete account');
+        setIsDeleting(false);
+        return;
+      }
+
+      // Success: Show toast, log out, and redirect
+      toast.success("Your account has been deleted successfully");
+      
+      // Sign out (clears session and local storage)
+      await supabase.auth.signOut();
+      
+      // Redirect to landing page
+      navigate('/', { replace: true });
+      
+    } catch (error) {
+      console.error('Account deletion error:', error);
+      toast.error(
+        error instanceof Error 
+          ? `Failed to delete account: ${error.message}`
+          : "Failed to delete account. Please try again or contact support."
+      );
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -120,23 +166,20 @@ export default function SettingsTab() {
       <h1 className="text-2xl font-bold">Settings</h1>
       
       {/* Email & Quiet Mode */}
-      <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-        <h2 className="font-semibold text-lg">Email address</h2>
-        <Input 
-          type="email" 
-          value={emailLoading ? "Loading..." : (email ?? "Not signed in")} 
-          readOnly 
-          className="bg-white dark:bg-slate-900 border-input"
-        />
-        <div className="flex items-center justify-between py-2">
-          <div className={`transition-opacity duration-300 ${!quietMode ? 'opacity-50' : ''}`}>
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+        <div className="space-y-2">
+          <Label>Email address</Label>
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
+          <div>
             <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
         </div>
-        <div className="py-2">
-          <p className="font-medium">Email window</p>
+        <div className="space-y-2">
+          <Label>Email window</Label>
           <p className="text-sm text-muted-foreground">Mon–Fri, 8am–5pm local time</p>
         </div>
       </div>
@@ -146,28 +189,28 @@ export default function SettingsTab() {
         <h2 className="font-semibold text-lg">Notification preferences</h2>
         <div className="space-y-3">
           <div className="flex items-center justify-between py-2">
-            <div className={`transition-opacity duration-300 ${!prepReminders ? 'opacity-50' : ''}`}>
+            <div>
               <p className="font-medium">Prep reminders</p>
               <p className="text-sm text-muted-foreground">Get reminded to prepare before deadlines</p>
             </div>
             <Switch checked={prepReminders} onCheckedChange={setPrepReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div className={`transition-opacity duration-300 ${!liveAlerts ? 'opacity-50' : ''}`}>
+            <div>
               <p className="font-medium">Live opening alerts</p>
               <p className="text-sm text-muted-foreground">Notified when applications go live</p>
             </div>
             <Switch checked={liveAlerts} onCheckedChange={setLiveAlerts} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div className={`transition-opacity duration-300 ${!deadlineReminders ? 'opacity-50' : ''}`}>
+            <div>
               <p className="font-medium">Deadline reminders</p>
               <p className="text-sm text-muted-foreground">Alerts before application deadlines</p>
             </div>
             <Switch checked={deadlineReminders} onCheckedChange={setDeadlineReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div className={`transition-opacity duration-300 ${!fyiUpdates ? 'opacity-50' : ''}`}>
+            <div>
               <p className="font-medium">FYI updates</p>
               <p className="text-sm text-muted-foreground">General updates and tips</p>
             </div>
@@ -182,10 +225,10 @@ export default function SettingsTab() {
         <div className="space-y-2">
           <Label>How early do you want prep alerts?</Label>
           <Select value={prepTiming} onValueChange={setPrepTiming}>
-            <SelectTrigger className="w-full bg-white dark:bg-slate-900 border-input">
+            <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-popover border border-border">
+            <SelectContent>
               <SelectItem value="3">3 days before</SelectItem>
               <SelectItem value="7">7 days before</SelectItem>
               <SelectItem value="14">14 days before</SelectItem>
@@ -269,15 +312,22 @@ export default function SettingsTab() {
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+                <AlertDialogTitle>Delete account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete your account and remove all your data from our servers.
+                  This action is permanent and cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDeleteAccount} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Delete account
+                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleDeleteAccount();
+                  }}
+                  disabled={isDeleting}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeleting ? "Deleting..." : "Delete"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
