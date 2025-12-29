@@ -735,6 +735,34 @@ serve(async (req) => {
           row.apply_url || ''
         );
         
+        // Ensure posted_at and age_days are always set together
+        // If posted_at exists, calculate age_days from it
+        // If age_days exists, calculate posted_at from it
+        // Otherwise default to age_days=0, posted_at=now()
+        let finalPostedAt: string | null = row.posted_at ?? null;
+        let finalAgeDays: number | null = row.age_days ?? null;
+        
+        // If posted_at is set but age_days is null, calculate age_days from posted_at
+        if (finalPostedAt !== null && finalAgeDays === null) {
+          const now = new Date();
+          const postedDate = new Date(finalPostedAt);
+          const diffTime = now.getTime() - postedDate.getTime();
+          finalAgeDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+        }
+        
+        // If age_days is set but posted_at is null, calculate posted_at from age_days
+        if (finalAgeDays !== null && finalPostedAt === null) {
+          const now = Date.now();
+          const postedDate = new Date(now - finalAgeDays * 24 * 60 * 60 * 1000);
+          finalPostedAt = postedDate.toISOString();
+        }
+        
+        // If both are null, default to age_days=0, posted_at=now()
+        if (finalPostedAt === null && finalAgeDays === null) {
+          finalAgeDays = 0;
+          finalPostedAt = new Date().toISOString();
+        }
+        
         return {
           company_name: row.company_name,
           role_title: finalRoleTitle,
@@ -746,8 +774,9 @@ serve(async (req) => {
           last_seen_at: now,
           is_active: true,  // Always set to true for fetched listings
           listing_hash: listingHash,
-          posted_at: row.posted_at || null,
-          age_days: row.age_days || null
+          // Always include both fields (never null)
+          posted_at: finalPostedAt!,
+          age_days: finalAgeDays!
         };
       })
     );
@@ -779,53 +808,51 @@ serve(async (req) => {
     // Prepare records with first_seen_at for new rows
     // Note: first_seen_at will be preserved by trigger for existing rows
     // Preserve existing posted_at if it exists, otherwise use parsed value
-    // Ensure posted_at and age_days are always written together
+    // CRITICAL: Ensure posted_at and age_days are ALWAYS set together (never null)
     const recordsToUpsert = activeRecords.map(record => {
       const existing = existingPostedAtMap.get(record.listing_hash);
       
       // Determine posted_at: preserve existing if it exists, otherwise use parsed value
-      let finalPostedAt: string | null = existing?.posted_at || record.posted_at || null;
+      // Use nullish coalescing (??) to preserve 0 values
+      let finalPostedAt: string | null = existing?.posted_at ?? record.posted_at ?? null;
       let finalAgeDays: number | null = null;
       
-      // If posted_at is set, always calculate age_days from it
+      // Priority 1: If posted_at is set (from existing or parsed), always calculate age_days from it
       if (finalPostedAt !== null) {
         const now = new Date();
         const postedDate = new Date(finalPostedAt);
         const diffTime = now.getTime() - postedDate.getTime();
-        finalAgeDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        // Ensure age_days is never negative
-        if (finalAgeDays < 0) {
-          finalAgeDays = 0;
-          // If calculated age is negative, set posted_at to now()
-          finalPostedAt = now.toISOString();
-        }
-      } else if (record.posted_at !== null) {
-        // Use parsed posted_at and calculate age_days
-        finalPostedAt = record.posted_at;
-        const now = new Date();
-        const postedDate = new Date(finalPostedAt);
-        const diffTime = now.getTime() - postedDate.getTime();
-        finalAgeDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        finalAgeDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+        // If calculated age is negative (future date), normalize to 0
         if (finalAgeDays < 0) {
           finalAgeDays = 0;
           finalPostedAt = now.toISOString();
         }
-      } else if (record.age_days !== null) {
-        // Use parsed age_days and calculate posted_at
+      } 
+      // Priority 2: If posted_at is null but age_days exists (from parsed row), calculate posted_at
+      else if (record.age_days !== null && record.age_days !== undefined) {
         finalAgeDays = record.age_days;
         const now = Date.now();
         const postedDate = new Date(now - finalAgeDays * 24 * 60 * 60 * 1000);
         finalPostedAt = postedDate.toISOString();
-      } else {
-        // Default: age_days = 0, posted_at = now()
+      }
+      // Priority 3: Default fallback - both are missing, set age_days=0, posted_at=now()
+      else {
         finalAgeDays = 0;
         finalPostedAt = new Date().toISOString();
+      }
+      
+      // Final safety check: ensure both are never null
+      if (finalPostedAt === null || finalAgeDays === null) {
+        console.warn(`[WARN] Safety fallback: posted_at or age_days was null for listing_hash ${record.listing_hash}`);
+        finalAgeDays = finalAgeDays ?? 0;
+        finalPostedAt = finalPostedAt ?? new Date().toISOString();
       }
       
       return {
         ...record,
         first_seen_at: now,
-        // Always set both posted_at and age_days together
+        // ALWAYS include both fields in upsert payload (never null)
         posted_at: finalPostedAt,
         age_days: finalAgeDays
       };
