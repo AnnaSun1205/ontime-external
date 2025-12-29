@@ -32,6 +32,8 @@ serve(async (req) => {
   try {
     // Step 1: Extract Bearer token from Authorization header
     const authHeader = req.headers.get('Authorization');
+    console.log('hasAuth?', !!authHeader);
+    
     if (!authHeader) {
       console.error('Missing authorization header');
       return new Response(
@@ -44,11 +46,25 @@ serve(async (req) => {
     }
 
     // Extract Bearer token
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.replace('Bearer ', '').trim();
+    const looksJwt = token?.split('.').length === 3;
+    console.log('looksJwt?', looksJwt, 'tokenLength', token?.length);
+    
     if (!token) {
-      console.error('Invalid authorization header format');
+      console.error('Invalid authorization header format - empty token');
       return new Response(
         JSON.stringify({ error: 'Invalid authorization header format' }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    if (!looksJwt) {
+      console.error('Token does not look like a JWT (should have 3 parts separated by dots)');
+      return new Response(
+        JSON.stringify({ error: 'Invalid token format - not a JWT' }),
         { 
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -70,6 +86,28 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
+    }
+
+    // Decode JWT to verify it has a 'sub' claim (user ID)
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        console.log('JWT payload has sub?', !!payload.sub, 'sub value:', payload.sub);
+        if (!payload.sub) {
+          console.error('JWT missing sub claim - this is not a user access token');
+          return new Response(
+            JSON.stringify({ error: 'Invalid token: missing user ID (sub claim). Ensure you are using a user access token, not anon/service role key.' }),
+            { 
+              status: 401,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
+          );
+        }
+      }
+    } catch (decodeError) {
+      console.error('Failed to decode JWT:', decodeError);
+      // Continue anyway - let getUser() handle validation
     }
 
     // Create client with anon key to verify JWT

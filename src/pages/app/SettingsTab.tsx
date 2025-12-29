@@ -118,6 +118,8 @@ export default function SettingsTab() {
       // Get session and verify authentication
       const { data: sessionData } = await supabase.auth.getSession();
       console.log('session exists?', !!sessionData.session);
+      console.log('access_token exists?', !!sessionData.session?.access_token);
+      console.log('access_token looks JWT?', sessionData.session?.access_token?.split('.').length === 3);
       
       if (!sessionData.session) {
         toast.error("You must be signed in to delete your account");
@@ -125,7 +127,14 @@ export default function SettingsTab() {
         return;
       }
 
-      // Call Edge Function using Supabase client (automatically includes JWT)
+      if (!sessionData.session.access_token) {
+        toast.error("Session token missing. Please sign in again.");
+        setIsDeleting(false);
+        return;
+      }
+
+      // Call Edge Function using Supabase client (automatically includes user's JWT from session)
+      // supabase.functions.invoke() automatically uses the current session's access_token
       const { data, error } = await supabase.functions.invoke('delete_account');
       console.log('invoke result', { data, error });
 
