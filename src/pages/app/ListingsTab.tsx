@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Search, ExternalLink, Bookmark, MapPin, Loader2, Zap } from "lucide-react";
+import { Search, ExternalLink, Bookmark, MapPin, Loader2, Zap, CheckCheck } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -97,7 +97,7 @@ export default function ListingsTab() {
     localStorage.setItem(COUNTRY_STORAGE_KEY, selectedCountry);
   }, [selectedCountry]);
 
-  // Fetch user's last_seen_listings_at
+  // Fetch user's last_seen_listings_at (initialize for new users)
   useEffect(() => {
     async function fetchUserPreferences() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -113,14 +113,24 @@ export default function ListingsTab() {
       
       if (data?.last_seen_listings_at) {
         setLastSeenListingsAt(new Date(data.last_seen_listings_at));
+      } else {
+        // First-time user: initialize last_seen_listings_at to now
+        // This ensures they start with 0 new items
+        const now = new Date();
+        setLastSeenListingsAt(now);
+        
+        await supabase
+          .from('user_preferences')
+          .update({ last_seen_listings_at: now.toISOString() })
+          .eq('user_id', user.id);
       }
     }
     
     fetchUserPreferences();
   }, []);
 
-  // Mark listings as seen when user clicks the New tab
-  const markListingsAsSeen = useCallback(async () => {
+  // Mark all listings as seen (user action only)
+  const markAllAsSeen = useCallback(async () => {
     if (!userId) return;
     
     const now = new Date();
@@ -130,6 +140,8 @@ export default function ListingsTab() {
       .from('user_preferences')
       .update({ last_seen_listings_at: now.toISOString() })
       .eq('user_id', userId);
+    
+    toast.success("All listings marked as seen");
   }, [userId]);
 
   useEffect(() => {
@@ -341,34 +353,44 @@ export default function ListingsTab() {
 
       {/* Time tabs */}
       {!loading && !error && filteredListings.length > 0 && (
-        <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit overflow-x-auto">
-          {visibleTabs.map((tab) => {
-            const showRedDot = tab.key === "new" && tab.count > 0 && activeTab !== "new";
-            return (
-              <button
-                key={tab.key}
-                onClick={() => {
-                  setActiveTab(tab.key);
-                  if (tab.key === "new") {
-                    markListingsAsSeen();
-                  }
-                }}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap relative",
-                  activeTab === tab.key
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
-                  tab.key === "new" && activeTab === tab.key && "text-amber-600"
-                )}
-              >
-                {tab.icon}
-                {tab.label} ({tab.count})
-                {showRedDot && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
-                )}
-              </button>
-            );
-          })}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit overflow-x-auto">
+            {visibleTabs.map((tab) => {
+              const showRedDot = tab.key === "new" && tab.count > 0 && activeTab !== "new";
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={cn(
+                    "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap relative",
+                    activeTab === tab.key
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                    tab.key === "new" && activeTab === tab.key && "text-amber-600"
+                  )}
+                >
+                  {tab.icon}
+                  {tab.label} ({tab.count})
+                  {showRedDot && (
+                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          
+          {/* Mark all as seen button */}
+          {newCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={markAllAsSeen}
+              className="text-muted-foreground hover:text-foreground gap-1.5"
+            >
+              <CheckCheck className="w-4 h-4" />
+              Mark all as seen
+            </Button>
+          )}
         </div>
       )}
 
