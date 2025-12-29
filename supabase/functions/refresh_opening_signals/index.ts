@@ -611,6 +611,8 @@ serve(async (req) => {
     
     // Perform upsert directly - no need to check existing hashes first
     // Supabase will handle conflict resolution via listing_hash unique constraint
+    // On conflict, ALL fields in recordsToUpsert will be updated, including role_title (sanitized)
+    // This ensures existing rows get updated with the latest sanitized role_title
     const { data: upsertedData, error: upsertError } = await supabase
       .from('opening_signals')
       .upsert(recordsToUpsert, {
