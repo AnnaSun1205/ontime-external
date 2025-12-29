@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 const COMMON_TIMEZONES = [
   "America/New_York",
@@ -65,7 +66,8 @@ const COMMON_TIMEZONES = [
 ];
 
 export default function SettingsTab() {
-  const [email, setEmail] = useState("you@example.com");
+  const [email, setEmail] = useState<string | null>(null);
+  const [emailLoading, setEmailLoading] = useState(true);
   const [quietMode, setQuietMode] = useState(true);
   
   // Notification preferences
@@ -95,6 +97,16 @@ export default function SettingsTab() {
     setTimezone(detectedTimezone);
   }, []);
 
+  useEffect(() => {
+    // Fetch authenticated user's email
+    const fetchUserEmail = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setEmail(user?.email ?? null);
+      setEmailLoading(false);
+    };
+    fetchUserEmail();
+  }, []);
+
   const handleDownloadData = () => {
     toast.success("Your data export has been initiated. You'll receive an email shortly.");
   };
@@ -108,20 +120,23 @@ export default function SettingsTab() {
       <h1 className="text-2xl font-bold">Settings</h1>
       
       {/* Email & Quiet Mode */}
-      <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
-        <div className="space-y-2">
-          <Label>Email address</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </div>
-        <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
-          <div>
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+        <h2 className="font-semibold text-lg">Email address</h2>
+        <Input 
+          type="email" 
+          value={emailLoading ? "Loading..." : (email ?? "Not signed in")} 
+          readOnly 
+          className="bg-white dark:bg-slate-900 border-input"
+        />
+        <div className="flex items-center justify-between py-2">
+          <div className={`transition-opacity duration-300 ${!quietMode ? 'opacity-50' : ''}`}>
             <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
         </div>
-        <div className="space-y-2">
-          <Label>Email window</Label>
+        <div className="py-2">
+          <p className="font-medium">Email window</p>
           <p className="text-sm text-muted-foreground">Mon–Fri, 8am–5pm local time</p>
         </div>
       </div>
@@ -131,28 +146,28 @@ export default function SettingsTab() {
         <h2 className="font-semibold text-lg">Notification preferences</h2>
         <div className="space-y-3">
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!prepReminders ? 'opacity-50' : ''}`}>
               <p className="font-medium">Prep reminders</p>
               <p className="text-sm text-muted-foreground">Get reminded to prepare before deadlines</p>
             </div>
             <Switch checked={prepReminders} onCheckedChange={setPrepReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!liveAlerts ? 'opacity-50' : ''}`}>
               <p className="font-medium">Live opening alerts</p>
               <p className="text-sm text-muted-foreground">Notified when applications go live</p>
             </div>
             <Switch checked={liveAlerts} onCheckedChange={setLiveAlerts} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!deadlineReminders ? 'opacity-50' : ''}`}>
               <p className="font-medium">Deadline reminders</p>
               <p className="text-sm text-muted-foreground">Alerts before application deadlines</p>
             </div>
             <Switch checked={deadlineReminders} onCheckedChange={setDeadlineReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-300 ${!fyiUpdates ? 'opacity-50' : ''}`}>
               <p className="font-medium">FYI updates</p>
               <p className="text-sm text-muted-foreground">General updates and tips</p>
             </div>
@@ -167,10 +182,10 @@ export default function SettingsTab() {
         <div className="space-y-2">
           <Label>How early do you want prep alerts?</Label>
           <Select value={prepTiming} onValueChange={setPrepTiming}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full bg-white dark:bg-slate-900 border-input">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-popover border border-border">
               <SelectItem value="3">3 days before</SelectItem>
               <SelectItem value="7">7 days before</SelectItem>
               <SelectItem value="14">14 days before</SelectItem>
