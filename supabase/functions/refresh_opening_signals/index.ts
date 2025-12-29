@@ -15,6 +15,8 @@ interface ParsedRow {
   role_title: string;
   location: string | null;
   apply_url: string | null;
+  age_days: number | null;
+  posted_at: string | null;
 }
 
 interface ParseResult {
@@ -63,6 +65,9 @@ function sanitizeRoleTitle(input: string, term?: string): string {
     .replace(/[\s,.:;]+$/g, "")             // trailing punctuation
     .replace(/\s{2,}/g, " ")                // collapse whitespace
     .trim();
+
+  // 7) Final safety pass: remove any trailing & that might have been missed
+  s = s.replace(/\s*&\s*$/, "");
 
   return s;
 }
@@ -120,12 +125,52 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
         const data = JSON.parse(text);
         // Adapt based on actual structure - this is a placeholder
         if (Array.isArray(data)) {
-          return data.map((item: any) => ({
-            company_name: item.company || item.company_name || '',
-            role_title: sanitizeRoleTitle(item.role || item.role_title || '', term),
-            location: item.location || null,
-            apply_url: item.apply_url || item.url || null,
-          })).filter((r: ParsedRow) => r.company_name && r.role_title);
+          return data.map((item: any) => {
+            // Parse age if available in JSON
+            let ageDays: number | null = null;
+            let postedAt: string | null = null;
+            
+            if (item.age || item.age_days) {
+              const ageValue = item.age || item.age_days;
+              if (typeof ageValue === 'number') {
+                ageDays = ageValue;
+                const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
+                postedAt = postedDate.toISOString();
+              } else if (typeof ageValue === 'string') {
+                const ageMatch = ageValue.match(/^(\d+)d?$/i);
+                if (ageMatch) {
+                  ageDays = parseInt(ageMatch[1], 10);
+                  if (!isNaN(ageDays)) {
+                    const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
+                    postedAt = postedDate.toISOString();
+                  }
+                }
+              }
+            }
+            
+            if (item.posted_at || item.posted_date) {
+              try {
+                const parsedDate = new Date(item.posted_at || item.posted_date);
+                if (!isNaN(parsedDate.getTime())) {
+                  postedAt = parsedDate.toISOString();
+                  const now = new Date();
+                  const diffTime = now.getTime() - parsedDate.getTime();
+                  ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                }
+              } catch (e) {
+                // Ignore date parsing errors
+              }
+            }
+            
+            return {
+              company_name: item.company || item.company_name || '',
+              role_title: sanitizeRoleTitle(item.role || item.role_title || '', term),
+              location: item.location || null,
+              apply_url: item.apply_url || item.url || null,
+              age_days: ageDays,
+              posted_at: postedAt
+            };
+          }).filter((r: ParsedRow) => r.company_name && r.role_title);
         }
       } catch (e) {
         console.log(`Failed to parse JSON from ${url}: ${e}`);
@@ -144,13 +189,32 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
         const urlIdx = headers.findIndex(h => h.includes('url') || h.includes('apply'));
         
         if (companyIdx >= 0 && roleIdx >= 0) {
+          const ageIdx = headers.findIndex(h => h.includes('age') || h.includes('posted') || h.includes('date'));
           return lines.slice(1).map(line => {
             const cols = line.split(',').map(c => c.trim());
+            
+            // Parse age if available in CSV
+            let ageDays: number | null = null;
+            let postedAt: string | null = null;
+            if (ageIdx >= 0 && cols[ageIdx]) {
+              const ageCell = cols[ageIdx].trim();
+              const ageMatch = ageCell.match(/^(\d+)d?$/i);
+              if (ageMatch) {
+                ageDays = parseInt(ageMatch[1], 10);
+                if (!isNaN(ageDays)) {
+                  const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
+                  postedAt = postedDate.toISOString();
+                }
+              }
+            }
+            
             return {
               company_name: cols[companyIdx] || '',
               role_title: sanitizeRoleTitle(cols[roleIdx] || '', term),
               location: locationIdx >= 0 ? (cols[locationIdx] || null) : null,
               apply_url: urlIdx >= 0 ? (cols[urlIdx] || null) : null,
+              age_days: ageDays,
+              posted_at: postedAt
             };
           }).filter(r => r.company_name && r.role_title);
         }
@@ -190,7 +254,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
   
   // Try to detect column order from header row if available
   const headerMatch = tableHtml.match(/<thead>[\s\S]*?<tr>([\s\S]*?)<\/tr>[\s\S]*?<\/thead>/i);
-  let columnOrder: { company?: number; role?: number; location?: number; apply?: number } = {};
+  let columnOrder: { company?: number; role?: number; location?: number; apply?: number; age?: number } = {};
   
   if (headerMatch) {
     const headerCells = headerMatch[1].match(/<th[^>]*>([\s\S]*?)<\/th>/gi) || 
@@ -202,15 +266,17 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         if (text.includes('role') || text.includes('position') || text.includes('title')) columnOrder.role = idx;
         if (text.includes('location')) columnOrder.location = idx;
         if (text.includes('apply') || text.includes('link') || text.includes('url')) columnOrder.apply = idx;
+        if (text.includes('age') || text.includes('posted') || text.includes('date')) columnOrder.age = idx;
       });
     }
   }
   
-  // Default column order if not detected: Company (0), Role (1), Location (2), Application (3)
+  // Default column order if not detected: Company (0), Role (1), Location (2), Application (3), Age (4 if present)
   const companyIdx = columnOrder.company ?? 0;
   const roleIdx = columnOrder.role ?? 1;
   const locationIdx = columnOrder.location ?? 2;
   const applyIdx = columnOrder.apply ?? 3;
+  const ageIdx = columnOrder.age ?? 4; // Age column is optional
   
   // Track the current company name across rows (for handling "↳" continuation symbol)
   let currentCompany: string | null = null;
@@ -326,11 +392,48 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         }
       }
       
+      // Parse Age column if present
+      let ageDays: number | null = null;
+      let postedAt: string | null = null;
+      
+      if (ageIdx !== undefined && tdMatches[ageIdx]) {
+        const ageCell = cells[ageIdx]?.trim() || '';
+        // Try to parse age format like "0d", "3d", "1d", etc.
+        const ageMatch = ageCell.match(/^(\d+)d?$/i);
+        if (ageMatch) {
+          ageDays = parseInt(ageMatch[1], 10);
+          if (!isNaN(ageDays)) {
+            // Calculate posted_at from age_days
+            const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
+            postedAt = postedDate.toISOString();
+          }
+        } else {
+          // Try to parse as actual date if provided
+          const dateMatch = ageCell.match(/\d{4}-\d{2}-\d{2}/) || ageCell.match(/\d{1,2}\/\d{1,2}\/\d{4}/);
+          if (dateMatch) {
+            try {
+              const parsedDate = new Date(ageCell);
+              if (!isNaN(parsedDate.getTime())) {
+                postedAt = parsedDate.toISOString();
+                // Calculate age_days from posted_at
+                const now = new Date();
+                const diffTime = now.getTime() - parsedDate.getTime();
+                ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+              }
+            } catch (e) {
+              // Ignore date parsing errors
+            }
+          }
+        }
+      }
+      
       rows.push({
         company_name: companyName,
         role_title: roleTitleClean,
         location: location,
-        apply_url: applyUrl
+        apply_url: applyUrl,
+        age_days: ageDays,
+        posted_at: postedAt
       });
     } catch (error) {
       errors.push(`Table ${tableIndex}, Row ${rowIdx}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -414,29 +517,19 @@ serve(async (req) => {
   };
   
   try {
-    // Authentication check - require service role key in Authorization header
-    const authHeader = req.headers.get('Authorization');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
-    if (!authHeader || authHeader !== `Bearer ${supabaseServiceKey}`) {
-      console.log('❌ Unauthorized request - missing or invalid Authorization header');
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Unauthorized' }),
-        { 
-          status: 401,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
     // Get Supabase client with service role key
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      const error = 'Missing required environment variables';
-      console.log(`❌ ${error}`);
+      const error = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables';
+      debugInfo.error = error;
       return new Response(
-        JSON.stringify({ ok: false, error }),
+        JSON.stringify({ 
+          ok: false, 
+          error,
+          debug: debugInfo
+        }),
         { 
           status: 500,
           headers: { 'Content-Type': 'application/json' }
@@ -605,7 +698,9 @@ serve(async (req) => {
           signal_type: 'job_posted',
           last_seen_at: now,
           is_active: true,  // Always set to true for fetched listings
-          listing_hash: listingHash
+          listing_hash: listingHash,
+          posted_at: row.posted_at || null,
+          age_days: row.age_days || null
         };
       })
     );
