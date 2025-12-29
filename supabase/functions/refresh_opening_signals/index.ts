@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const GITHUB_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/master/README.md';
+const TERM = 'Summer 2026';
 // Alternative structured sources to check (if available in future)
 const ALTERNATIVE_SOURCES = [
   'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/master/data.json',
@@ -25,21 +26,43 @@ interface ParseResult {
 /**
  * Sanitizes role title by removing emojis, term patterns, and normalizing whitespace
  */
-function sanitizeRoleTitle(roleTitle: string): string {
-  if (!roleTitle) return roleTitle;
+function sanitizeRoleTitle(input: string, term?: string): string {
+  if (!input) return input;
 
-  let s = roleTitle;
+  let s = input;
 
-  // 1) Remove term patterns like "Summer 2026", "Fall 2027", etc.
-  s = s.replace(/\b(Spring|Summer|Fall|Autumn|Winter)\s*(20\d{2})\b/gi, "");
+  // 1) Remove emojis (incl. flags/regional indicators) + variation selectors
+  s = s
+    .replace(/[\uFE0E\uFE0F]/g, "") // variation selectors
+    .replace(/\p{Extended_Pictographic}+/gu, "")
+    .replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, ""); // flags
 
-  // 2) Remove emojis (covers most pictographs)
-  // Note: requires Unicode property escapes support (Deno/Node 16+ usually fine)
-  s = s.replace(/\p{Extended_Pictographic}+/gu, "");
+  // 2) Remove term patterns (both orders)
+  const season = "(Spring|Summer|Fall|Autumn|Winter)";
+  s = s.replace(new RegExp(`\\b${season}\\s*20\\d{2}\\b`, "gi"), "");
+  s = s.replace(new RegExp(`\\b20\\d{2}\\s*${season}\\b`, "gi"), "");
 
-  // 3) Remove leftover separators that often surround emojis/terms
-  s = s.replace(/[–—-]+\s*/g, " "); // normalize dashes
-  s = s.replace(/\s{2,}/g, " ").trim();
+  // 3) If term string is known, strip it too (extra safety)
+  if (term) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    s = s.replace(new RegExp(`\\b${escaped}\\b`, "gi"), "");
+  }
+
+  // 4) Remove standalone year when it's obviously "term-ish"
+  // e.g. "Internship 2026", "Intern 2026"
+  s = s.replace(/\b(Internship|Intern|Co-?op|New Grad)\s*20\d{2}\b/gi, "$1");
+
+  // 5) Clean up empty brackets created by removals
+  s = s.replace(/\(\s*\)/g, "");
+  s = s.replace(/\[\s*\]/g, "");
+
+  // 6) Clean up leftover separators / trailing junk
+  s = s
+    .replace(/\s*[-–—|,:;]+\s*/g, " ")      // normalize separators
+    .replace(/\s*&\s*$/g, "")               // trailing &
+    .replace(/[\s,.:;]+$/g, "")             // trailing punctuation
+    .replace(/\s{2,}/g, " ")                // collapse whitespace
+    .trim();
 
   return s;
 }
@@ -77,7 +100,7 @@ async function computeListingHash(
  * Attempts to parse structured data (JSON/CSV/YAML)
  * Returns null if not available or not parseable
  */
-async function tryParseStructuredSource(url: string): Promise<ParsedRow[] | null> {
+async function tryParseStructuredSource(url: string, term?: string): Promise<ParsedRow[] | null> {
   try {
     const response = await fetch(url, { 
       method: 'GET',
@@ -99,7 +122,7 @@ async function tryParseStructuredSource(url: string): Promise<ParsedRow[] | null
         if (Array.isArray(data)) {
           return data.map((item: any) => ({
             company_name: item.company || item.company_name || '',
-            role_title: sanitizeRoleTitle(item.role || item.role_title || ''),
+            role_title: sanitizeRoleTitle(item.role || item.role_title || '', term),
             location: item.location || null,
             apply_url: item.apply_url || item.url || null,
           })).filter((r: ParsedRow) => r.company_name && r.role_title);
@@ -125,7 +148,7 @@ async function tryParseStructuredSource(url: string): Promise<ParsedRow[] | null
             const cols = line.split(',').map(c => c.trim());
             return {
               company_name: cols[companyIdx] || '',
-              role_title: sanitizeRoleTitle(cols[roleIdx] || ''),
+              role_title: sanitizeRoleTitle(cols[roleIdx] || '', term),
               location: locationIdx >= 0 ? (cols[locationIdx] || null) : null,
               apply_url: urlIdx >= 0 ? (cols[urlIdx] || null) : null,
             };
@@ -144,7 +167,7 @@ async function tryParseStructuredSource(url: string): Promise<ParsedRow[] | null
 /**
  * Parses a single HTML table to extract rows with robust error handling
  */
-function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, tableIndex: number = 0): ParseResult {
+function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, tableIndex: number = 0, term?: string): ParseResult {
   const rows: ParsedRow[] = [];
   const errors: string[] = [];
   let skipped = 0;
@@ -257,7 +280,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       }
       
       let roleTitle = cells[roleIdx]?.replace(/<[^>]+>/g, '').trim() || '';
-      roleTitle = sanitizeRoleTitle(roleTitle);
+      roleTitle = sanitizeRoleTitle(roleTitle, term);
       const location = cells[locationIdx]?.replace(/<[^>]+>/g, '').trim() || null;
       
       // Application column should have the apply URL
@@ -381,74 +404,7 @@ function deduplicateByApplyUrl(rows: ParsedRow[]): ParsedRow[] {
   return unique;
 }
 
-// CORS headers for edge function
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-/**
- * Validates and sanitizes a URL to prevent malicious input
- * Only allows https:// URLs from trusted domains or generic job application URLs
- */
-function sanitizeAndValidateUrl(url: string | null): string | null {
-  if (!url) return null;
-  
-  const trimmed = url.trim();
-  
-  // Must start with https:// (or http:// which we'll upgrade)
-  if (!trimmed.match(/^https?:\/\//i)) {
-    return null;
-  }
-  
-  // Upgrade http to https
-  const secureUrl = trimmed.replace(/^http:\/\//i, 'https://');
-  
-  // Validate URL structure
-  try {
-    const parsed = new URL(secureUrl);
-    
-    // Block javascript: and data: URLs
-    if (parsed.protocol !== 'https:') {
-      return null;
-    }
-    
-    // Block suspicious URL patterns
-    if (parsed.hostname.includes('<') || 
-        parsed.hostname.includes('>') || 
-        parsed.pathname.includes('<script') ||
-        parsed.search.includes('<script')) {
-      return null;
-    }
-    
-    return secureUrl;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Sanitizes text content to prevent XSS vectors
- * Removes HTML tags and dangerous characters
- */
-function sanitizeText(text: string | null): string | null {
-  if (!text) return null;
-  
-  return text
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/[<>]/g, '') // Remove remaining angle brackets
-    .replace(/javascript:/gi, '') // Remove javascript: protocol
-    .replace(/on\w+\s*=/gi, '') // Remove event handlers
-    .trim()
-    .substring(0, 500); // Limit length
-}
-
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
   const startTime = Date.now();
   const debugInfo: any = {
     source_fetch: { status: 'pending', url: GITHUB_URL },
@@ -463,7 +419,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      const error = 'Missing environment variables';
+      const error = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables';
       debugInfo.error = error;
       return new Response(
         JSON.stringify({ 
@@ -473,25 +429,8 @@ serve(async (req) => {
         }),
         { 
           status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' }
         }
-      );
-    }
-
-    // Authentication check - require Bearer token matching service role key
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Unauthorized - Bearer token required' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    const providedToken = authHeader.substring(7); // Remove 'Bearer ' prefix
-    if (providedToken !== supabaseServiceKey) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'Unauthorized - Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -535,7 +474,7 @@ serve(async (req) => {
     let parsedRows: ParsedRow[] | null = null;
     for (const altUrl of ALTERNATIVE_SOURCES) {
       console.log(`Trying structured source: ${altUrl}`);
-      parsedRows = await tryParseStructuredSource(altUrl);
+      parsedRows = await tryParseStructuredSource(altUrl, TERM);
       if (parsedRows && parsedRows.length > 0) {
         debugInfo.parsing.method = 'structured';
         debugInfo.source_fetch.url = altUrl;
@@ -591,7 +530,7 @@ serve(async (req) => {
       let totalSkipped = 0;
       
       for (let i = 0; i < activeTables.length; i++) {
-        const result = parseHTMLTable(activeTables[i], false, i);
+        const result = parseHTMLTable(activeTables[i], false, i, TERM);
         activeRows.push(...result.rows);
         allParseErrors.push(...result.errors);
         totalSkipped += result.skipped;
@@ -630,43 +569,27 @@ serve(async (req) => {
 
     // Prepare data for upsert with listing_hash
     const now = new Date().toISOString();
-    const term = 'Summer 2026';
+    const term = TERM;
     
-    // Compute listing_hash for each row, prepare records, and filter out nulls
-    const activeRecordsWithNulls = await Promise.all(
+    // Compute listing_hash for each row and prepare records
+    const activeRecords = await Promise.all(
       parsedRows.map(async (row) => {
-        // Sanitize all fields before storing
-        const sanitizedCompanyName = sanitizeText(row.company_name);
-        const sanitizedLocation = sanitizeText(row.location);
-        const sanitizedApplyUrl = sanitizeAndValidateUrl(row.apply_url);
-        
-        // Sanitize role title: remove term if still present, then apply role-specific sanitization
-        let finalRoleTitle = row.role_title;
-        if (term) {
-          finalRoleTitle = finalRoleTitle.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '').trim();
-        }
-        finalRoleTitle = sanitizeRoleTitle(finalRoleTitle);
-        // Also apply general text sanitization for consistency
-        const sanitizedRoleTitle = sanitizeText(finalRoleTitle);
-        
-        // Skip if required fields fail validation
-        if (!sanitizedCompanyName || !sanitizedRoleTitle) {
-          return null;
-        }
+        // Final sanitization pass (role_title already sanitized during parsing, but ensure term is removed)
+        const finalRoleTitle = sanitizeRoleTitle(row.role_title, term);
         
         const listingHash = await computeListingHash(
-          sanitizedCompanyName,
-          sanitizedRoleTitle,
-          sanitizedLocation,
+          row.company_name,
+          finalRoleTitle,
+          row.location,
           term,
-          sanitizedApplyUrl || ''
+          row.apply_url || ''
         );
         
         return {
-          company_name: sanitizedCompanyName,
-          role_title: sanitizedRoleTitle,
-          location: sanitizedLocation,
-          apply_url: sanitizedApplyUrl,
+          company_name: row.company_name,
+          role_title: finalRoleTitle,
+          location: row.location,
+          apply_url: row.apply_url,
           source: 'simplifyjobs_github',
           term: term,
           signal_type: 'job_posted',
@@ -676,26 +599,6 @@ serve(async (req) => {
         };
       })
     );
-    
-    // Filter out null records (those that failed validation)
-    const activeRecords = activeRecordsWithNulls.filter((record): record is NonNullable<typeof record> => record !== null);
-    
-    if (activeRecords.length === 0) {
-      console.warn('⚠️ No valid records after sanitization');
-      return new Response(
-        JSON.stringify({ 
-          ok: false, 
-          error: 'No valid records after sanitization',
-          debug: debugInfo
-        }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
-    
-    console.log(`✅ Sanitized records: ${activeRecords.length} valid out of ${parsedRows.length} parsed`);
 
     console.log('💾 Upserting active roles to opening_signals...');
     
@@ -749,7 +652,7 @@ serve(async (req) => {
       }),
       { 
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' }
       }
     );
 
@@ -760,14 +663,15 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: 'An error occurred during processing',
+        error: error instanceof Error ? error.message : 'Unknown error',
         inserted: 0,
         updated: 0,
-        deactivated: debugInfo.stale_cleanup.deactivated || 0
+        deactivated: debugInfo.stale_cleanup.deactivated || 0,
+        debug: debugInfo
       }),
       { 
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' }
       }
     );
   }
