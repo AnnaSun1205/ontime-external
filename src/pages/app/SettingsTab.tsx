@@ -68,7 +68,7 @@ const COMMON_TIMEZONES = [
 
 export default function SettingsTab() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("you@example.com");
+  const [email, setEmail] = useState("");
   const [quietMode, setQuietMode] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -92,6 +92,46 @@ export default function SettingsTab() {
       tz.toLowerCase().includes(timezoneSearch.toLowerCase())
     );
   }, [timezoneSearch]);
+
+  // Fetch authenticated user's email on page load and auth state changes
+  useEffect(() => {
+    const fetchUserEmail = async () => {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        if (error) {
+          console.error('Error fetching user:', error);
+          setEmail(""); // Clear email if error
+          return;
+        }
+
+        if (user?.email) {
+          setEmail(user.email);
+        } else {
+          setEmail(""); // No email if user not authenticated
+        }
+      } catch (err) {
+        console.error('Failed to fetch user email:', err);
+        setEmail("");
+      }
+    };
+
+    // Fetch email on mount
+    fetchUserEmail();
+
+    // Listen for auth state changes (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user?.email) {
+        setEmail(session.user.email);
+      } else {
+        setEmail(""); // Clear email on logout
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     // Detect local timezone
@@ -178,7 +218,13 @@ export default function SettingsTab() {
       <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
         <div className="space-y-2">
           <Label>Email address</Label>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input 
+            type="email" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={email ? undefined : "Not signed in"}
+            disabled={!email}
+          />
         </div>
         <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
           <div>
