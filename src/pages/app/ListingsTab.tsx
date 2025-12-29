@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
-import { Search, ExternalLink, Bookmark, MapPin, Loader2 } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Search, ExternalLink, Bookmark, MapPin, Loader2, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -19,10 +19,11 @@ interface Listing {
   country: "canada" | "us";
 }
 
-type TimeSection = "today" | "last2days" | "last7days" | "all";
+type TimeSection = "new" | "today" | "last2days" | "last7days" | "all";
 type Country = "canada" | "us";
 
 interface GroupedListings {
+  new: Listing[];
   today: Listing[];
   last2days: Listing[];
   last7days: Listing[];
@@ -45,7 +46,6 @@ const US_STATES = new Set([
 function classifyCountry(location: string): Country {
   const loc = location.toLowerCase().trim();
   
-  // Direct country mentions
   if (loc.includes("canada") || loc.endsWith(", canada")) {
     return "canada";
   }
@@ -53,12 +53,10 @@ function classifyCountry(location: string): Country {
     return "us";
   }
   
-  // Check for province/state abbreviations at the end or after comma
   const parts = location.split(/[,\s]+/).map(p => p.trim().toUpperCase());
   const lastPart = parts[parts.length - 1];
   const secondLastPart = parts.length > 1 ? parts[parts.length - 2] : "";
   
-  // Check last two parts for abbreviations
   for (const part of [lastPart, secondLastPart]) {
     if (CANADA_PROVINCES.has(part)) {
       return "canada";
@@ -68,7 +66,6 @@ function classifyCountry(location: string): Country {
     }
   }
   
-  // Check for "/ XX" pattern (e.g., "Toronto / ON")
   const slashMatch = location.match(/\/\s*([A-Z]{2})\b/i);
   if (slashMatch) {
     const abbr = slashMatch[1].toUpperCase();
@@ -76,7 +73,6 @@ function classifyCountry(location: string): Country {
     if (US_STATES.has(abbr)) return "us";
   }
   
-  // Default to US for unknown/remote
   return "us";
 }
 
@@ -88,16 +84,71 @@ export default function ListingsTab() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TimeSection>("today");
+  const [activeTab, setActiveTab] = useState<TimeSection>("new");
   const [selectedCountry, setSelectedCountry] = useState<Country>(() => {
     const saved = localStorage.getItem(COUNTRY_STORAGE_KEY);
     return saved === "us" ? "us" : "canada";
   });
+  const [lastSeenListingsAt, setLastSeenListingsAt] = useState<Date | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Persist country selection
   useEffect(() => {
     localStorage.setItem(COUNTRY_STORAGE_KEY, selectedCountry);
   }, [selectedCountry]);
+
+  // Fetch user's last_seen_listings_at
+  useEffect(() => {
+    async function fetchUserPreferences() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      setUserId(user.id);
+      
+      const { data } = await supabase
+        .from('user_preferences')
+        .select('last_seen_listings_at')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (data?.last_seen_listings_at) {
+        setLastSeenListingsAt(new Date(data.last_seen_listings_at));
+      }
+    }
+    
+    fetchUserPreferences();
+  }, []);
+
+  // Update last_seen_listings_at when leaving page
+  const updateLastSeenTimestamp = useCallback(async () => {
+    if (!userId) return;
+    
+    await supabase
+      .from('user_preferences')
+      .update({ last_seen_listings_at: new Date().toISOString() })
+      .eq('user_id', userId);
+  }, [userId]);
+
+  // Update timestamp on unmount
+  useEffect(() => {
+    return () => {
+      updateLastSeenTimestamp();
+    };
+  }, [updateLastSeenTimestamp]);
+
+  // Also update on visibility change (tab hidden/closed)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        updateLastSeenTimestamp();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [updateLastSeenTimestamp]);
 
   useEffect(() => {
     async function fetchListings() {
@@ -172,6 +223,7 @@ export default function ListingsTab() {
     const sevenDaysAgo = subDays(now, 7);
 
     const groups: GroupedListings = {
+      new: [],
       today: [],
       last2days: [],
       last7days: [],
@@ -189,28 +241,51 @@ export default function ListingsTab() {
     groups.all = sorted;
 
     for (const listing of sorted) {
-      const listingDate = listing.firstSeenAt;
+      const firstSeenDate = listing.firstSeenAt;
+      
+      // New: appeared after user's last visit
+      if (lastSeenListingsAt && isAfter(firstSeenDate, lastSeenListingsAt)) {
+        groups.new.push(listing);
+      }
 
-      if (isAfter(listingDate, todayStart) || isEqual(listingDate, todayStart)) {
+      // Time-based groupings
+      if (isAfter(firstSeenDate, todayStart) || isEqual(firstSeenDate, todayStart)) {
         groups.today.push(listing);
-      } else if (isAfter(listingDate, twoDaysAgo)) {
+      } else if (isAfter(firstSeenDate, twoDaysAgo)) {
         groups.last2days.push(listing);
-      } else if (isAfter(listingDate, sevenDaysAgo)) {
+      } else if (isAfter(firstSeenDate, sevenDaysAgo)) {
         groups.last7days.push(listing);
       }
     }
 
     return groups;
-  }, [filteredListings]);
+  }, [filteredListings, lastSeenListingsAt]);
 
-  const tabs: { key: TimeSection; label: string; count: number }[] = [
+  const newCount = groupedListings.new.length;
+  
+  const tabs: { key: TimeSection; label: string; count: number; icon?: React.ReactNode; hidden?: boolean }[] = [
+    { 
+      key: "new", 
+      label: "New", 
+      count: newCount, 
+      icon: <Zap className="w-3.5 h-3.5" />,
+      hidden: newCount === 0 
+    },
     { key: "today", label: "Today", count: groupedListings.today.length },
     { key: "last2days", label: "Last 2 Days", count: groupedListings.last2days.length },
     { key: "last7days", label: "Last 7 Days", count: groupedListings.last7days.length },
     { key: "all", label: "All", count: groupedListings.all.length },
   ];
 
+  const visibleTabs = tabs.filter(t => !t.hidden);
   const activeListings = groupedListings[activeTab];
+
+  // If "new" tab becomes hidden while selected, switch to "today"
+  useEffect(() => {
+    if (activeTab === "new" && newCount === 0) {
+      setActiveTab("today");
+    }
+  }, [activeTab, newCount]);
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
@@ -284,18 +359,20 @@ export default function ListingsTab() {
 
       {/* Time tabs */}
       {!loading && !error && filteredListings.length > 0 && (
-        <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit">
-          {tabs.map((tab) => (
+        <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit overflow-x-auto">
+          {visibleTabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                "px-4 py-2 text-sm font-medium rounded-md transition-colors",
+                "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap",
                 activeTab === tab.key
                   ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+                tab.key === "new" && activeTab === tab.key && "text-amber-600"
               )}
             >
+              {tab.icon}
               {tab.label} ({tab.count})
             </button>
           ))}
@@ -321,14 +398,26 @@ export default function ListingsTab() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {activeListings.map((listing) => {
                 const isSaved = savedListings.has(listing.id);
+                const isNew = lastSeenListingsAt && isAfter(listing.firstSeenAt, lastSeenListingsAt);
                 return (
                   <div
                     key={listing.id}
-                    className="bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow"
+                    className={cn(
+                      "bg-card border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow",
+                      isNew ? "border-amber-300 bg-amber-50/50" : "border-border"
+                    )}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div>
-                        <h3 className="font-semibold text-base">{listing.company}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-base">{listing.company}</h3>
+                          {isNew && (
+                            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
+                              <Zap className="w-3 h-3" />
+                              New
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-foreground/80">{listing.role}</p>
                       </div>
                       <Button
