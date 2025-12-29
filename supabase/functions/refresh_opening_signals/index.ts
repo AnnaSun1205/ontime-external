@@ -357,7 +357,74 @@ function deduplicateByApplyUrl(rows: ParsedRow[]): ParsedRow[] {
   return unique;
 }
 
+// CORS headers for edge function
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+/**
+ * Validates and sanitizes a URL to prevent malicious input
+ * Only allows https:// URLs from trusted domains or generic job application URLs
+ */
+function sanitizeAndValidateUrl(url: string | null): string | null {
+  if (!url) return null;
+  
+  const trimmed = url.trim();
+  
+  // Must start with https:// (or http:// which we'll upgrade)
+  if (!trimmed.match(/^https?:\/\//i)) {
+    return null;
+  }
+  
+  // Upgrade http to https
+  const secureUrl = trimmed.replace(/^http:\/\//i, 'https://');
+  
+  // Validate URL structure
+  try {
+    const parsed = new URL(secureUrl);
+    
+    // Block javascript: and data: URLs
+    if (parsed.protocol !== 'https:') {
+      return null;
+    }
+    
+    // Block suspicious URL patterns
+    if (parsed.hostname.includes('<') || 
+        parsed.hostname.includes('>') || 
+        parsed.pathname.includes('<script') ||
+        parsed.search.includes('<script')) {
+      return null;
+    }
+    
+    return secureUrl;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sanitizes text content to prevent XSS vectors
+ * Removes HTML tags and dangerous characters
+ */
+function sanitizeText(text: string | null): string | null {
+  if (!text) return null;
+  
+  return text
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>]/g, '') // Remove remaining angle brackets
+    .replace(/javascript:/gi, '') // Remove javascript: protocol
+    .replace(/on\w+\s*=/gi, '') // Remove event handlers
+    .trim()
+    .substring(0, 500); // Limit length
+}
+
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
   const startTime = Date.now();
   const debugInfo: any = {
     source_fetch: { status: 'pending', url: GITHUB_URL },
@@ -372,7 +439,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      const error = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables';
+      const error = 'Missing environment variables';
       debugInfo.error = error;
       return new Response(
         JSON.stringify({ 
@@ -382,8 +449,25 @@ serve(async (req) => {
         }),
         { 
           status: 500,
-          headers: { 'Content-Type': 'application/json' }
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
+      );
+    }
+
+    // Authentication check - require Bearer token matching service role key
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Unauthorized - Bearer token required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const providedToken = authHeader.substring(7); // Remove 'Bearer ' prefix
+    if (providedToken !== supabaseServiceKey) {
+      return new Response(
+        JSON.stringify({ ok: false, error: 'Unauthorized - Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -524,8 +608,8 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const term = 'Summer 2026';
     
-    // Compute listing_hash for each row and prepare records
-    const activeRecords = await Promise.all(
+    // Compute listing_hash for each row, prepare records, and filter out nulls
+    const activeRecordsWithNulls = await Promise.all(
       parsedRows.map(async (row) => {
         const listingHash = await computeListingHash(
           row.company_name,
@@ -535,11 +619,22 @@ serve(async (req) => {
           row.apply_url || ''
         );
         
+        // Sanitize all fields before storing
+        const sanitizedCompanyName = sanitizeText(row.company_name);
+        const sanitizedRoleTitle = sanitizeText(row.role_title);
+        const sanitizedLocation = sanitizeText(row.location);
+        const sanitizedApplyUrl = sanitizeAndValidateUrl(row.apply_url);
+        
+        // Skip if required fields fail validation
+        if (!sanitizedCompanyName || !sanitizedRoleTitle) {
+          return null;
+        }
+        
         return {
-          company_name: row.company_name,
-          role_title: row.role_title,
-          location: row.location,
-          apply_url: row.apply_url,
+          company_name: sanitizedCompanyName,
+          role_title: sanitizedRoleTitle,
+          location: sanitizedLocation,
+          apply_url: sanitizedApplyUrl,
           source: 'simplifyjobs_github',
           term: term,
           signal_type: 'job_posted',
@@ -549,6 +644,26 @@ serve(async (req) => {
         };
       })
     );
+    
+    // Filter out null records (those that failed validation)
+    const activeRecords = activeRecordsWithNulls.filter((record): record is NonNullable<typeof record> => record !== null);
+    
+    if (activeRecords.length === 0) {
+      console.warn('⚠️ No valid records after sanitization');
+      return new Response(
+        JSON.stringify({ 
+          ok: false, 
+          error: 'No valid records after sanitization',
+          debug: debugInfo
+        }),
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    console.log(`✅ Sanitized records: ${activeRecords.length} valid out of ${parsedRows.length} parsed`);
 
     console.log('💾 Upserting active roles to opening_signals...');
     
@@ -602,7 +717,7 @@ serve(async (req) => {
       }),
       { 
         status: 200,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
 
@@ -613,15 +728,14 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: 'An error occurred during processing',
         inserted: 0,
         updated: 0,
-        deactivated: debugInfo.stale_cleanup.deactivated || 0,
-        debug: debugInfo
+        deactivated: debugInfo.stale_cleanup.deactivated || 0
       }),
       { 
         status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
