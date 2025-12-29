@@ -18,13 +18,14 @@ interface Listing {
   country: "canada" | "us";
 }
 
-type TimeSection = "today" | "last2days" | "last7days";
+type TimeSection = "today" | "last2days" | "last7days" | "all";
 type Country = "canada" | "us";
 
 interface GroupedListings {
   today: Listing[];
   last2days: Listing[];
   last7days: Listing[];
+  all: Listing[];
 }
 
 // Canadian province/territory abbreviations
@@ -172,6 +173,7 @@ export default function ListingsTab() {
       today: [],
       last2days: [],
       last7days: [],
+      all: [],
     };
 
     const sorted = [...filteredListings].sort((a, b) => {
@@ -179,6 +181,9 @@ export default function ListingsTab() {
       const timeB = b.firstSeenAt?.getTime() ?? 0;
       return timeB - timeA;
     });
+
+    // All active listings go into 'all'
+    groups.all = sorted;
 
     for (const listing of sorted) {
       const listingDate = listing.firstSeenAt;
@@ -199,6 +204,7 @@ export default function ListingsTab() {
     { key: "today", label: "Today", count: groupedListings.today.length },
     { key: "last2days", label: "Last 2 Days", count: groupedListings.last2days.length },
     { key: "last7days", label: "Last 7 Days", count: groupedListings.last7days.length },
+    { key: "all", label: "All", count: groupedListings.all.length },
   ];
 
   const activeListings = groupedListings[activeTab];
