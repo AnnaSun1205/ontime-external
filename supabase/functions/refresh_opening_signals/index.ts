@@ -396,21 +396,41 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       let ageDays: number | null = null;
       let postedAt: string | null = null;
       
-      if (ageIdx !== undefined && tdMatches[ageIdx]) {
-        const ageCell = cells[ageIdx]?.trim() || '';
-        // Try to parse age format like "0d", "3d", "1d", etc.
-        const ageMatch = ageCell.match(/^(\d+)d?$/i);
-        if (ageMatch) {
-          ageDays = parseInt(ageMatch[1], 10);
-          if (!isNaN(ageDays)) {
-            // Calculate posted_at from age_days
-            const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
-            postedAt = postedDate.toISOString();
+      // Try to find Age column - check detected column or try all columns
+      let ageColumnIdx: number | undefined = columnOrder.age;
+      
+      // If not detected in header, try to find it by looking for "Xd" pattern in cells
+      if (ageColumnIdx === undefined) {
+        for (let i = 0; i < cells.length; i++) {
+          const cell = cells[i]?.trim() || '';
+          // Check if cell looks like age (e.g., "0d", "3d", "5d")
+          if (cell.match(/^\d+d?$/i)) {
+            ageColumnIdx = i;
+            console.log(`[DEBUG] Found Age column at index ${i} by pattern matching: "${cell}"`);
+            break;
           }
-        } else {
-          // Try to parse as actual date if provided
-          const dateMatch = ageCell.match(/\d{4}-\d{2}-\d{2}/) || ageCell.match(/\d{1,2}\/\d{1,2}\/\d{4}/);
-          if (dateMatch) {
+        }
+      }
+      
+      // Parse age if column found
+      if (ageColumnIdx !== undefined && ageColumnIdx < tdMatches.length) {
+        const ageCell = cells[ageColumnIdx]?.trim() || '';
+        
+        if (ageCell) {
+          // Parse age format like "0d", "3d", "1d", etc.
+          // Convert: age_days = parseInt(age.replace('d',''))
+          const ageValue = ageCell.replace(/d$/i, '').trim();
+          const parsedAge = parseInt(ageValue, 10);
+          
+          if (!isNaN(parsedAge) && parsedAge >= 0) {
+            ageDays = parsedAge;
+            // Calculate posted_at: now() - age_days * 24h
+            const now = Date.now();
+            const postedDate = new Date(now - ageDays * 24 * 60 * 60 * 1000);
+            postedAt = postedDate.toISOString();
+            console.log(`[DEBUG] Parsed age: "${ageCell}" → ${ageDays} days, posted_at: ${postedAt}`);
+          } else {
+            // Try to parse as actual date if provided
             try {
               const parsedDate = new Date(ageCell);
               if (!isNaN(parsedDate.getTime())) {
@@ -419,6 +439,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
                 const now = new Date();
                 const diffTime = now.getTime() - parsedDate.getTime();
                 ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                console.log(`[DEBUG] Parsed date: ${postedAt}, age_days: ${ageDays}`);
               }
             } catch (e) {
               // Ignore date parsing errors
@@ -707,17 +728,47 @@ serve(async (req) => {
 
     console.log('💾 Upserting active roles to opening_signals...');
     
+    // Fetch existing rows to preserve posted_at if it already exists
+    const listingHashes = activeRecords.map(r => r.listing_hash);
+    const { data: existingRows, error: fetchError } = await supabase
+      .from('opening_signals')
+      .select('listing_hash, posted_at, age_days')
+      .in('listing_hash', listingHashes);
+    
+    if (fetchError) {
+      console.warn('⚠️ Failed to fetch existing rows for posted_at preservation:', fetchError.message);
+    }
+    
+    // Create a map of existing posted_at values by listing_hash
+    const existingPostedAtMap = new Map<string, { posted_at: string | null; age_days: number | null }>();
+    if (existingRows) {
+      existingRows.forEach(row => {
+        existingPostedAtMap.set(row.listing_hash, {
+          posted_at: row.posted_at,
+          age_days: row.age_days
+        });
+      });
+    }
+    
     // Prepare records with first_seen_at for new rows
     // Note: first_seen_at will be preserved by trigger for existing rows
-    const recordsToUpsert = activeRecords.map(record => ({
-      ...record,
-      first_seen_at: now
-    }));
+    // Preserve existing posted_at if it exists, otherwise use parsed value
+    const recordsToUpsert = activeRecords.map(record => {
+      const existing = existingPostedAtMap.get(record.listing_hash);
+      return {
+        ...record,
+        first_seen_at: now,
+        // Only set posted_at if it doesn't already exist (preserve existing values)
+        posted_at: existing?.posted_at || record.posted_at || null,
+        // Only set age_days if posted_at was set (to keep them in sync)
+        age_days: existing?.posted_at ? existing.age_days : (record.age_days || null)
+      };
+    });
     
     // Perform upsert directly - no need to check existing hashes first
     // Supabase will handle conflict resolution via listing_hash unique constraint
     // On conflict, ALL fields in recordsToUpsert will be updated, including role_title (sanitized)
-    // This ensures existing rows get updated with the latest sanitized role_title
+    // posted_at is preserved if it already exists (only set when NULL)
     const { data: upsertedData, error: upsertError } = await supabase
       .from('opening_signals')
       .upsert(recordsToUpsert, {
