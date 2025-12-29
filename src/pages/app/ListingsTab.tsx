@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { startOfDay, subDays, startOfWeek, isAfter, isEqual } from "date-fns";
+import { startOfDay, subDays, subHours, isAfter, isEqual } from "date-fns";
 
 interface Listing {
   id: string;
@@ -14,16 +14,71 @@ interface Listing {
   location: string;
   term: string;
   applyUrl: string;
-  firstSeenAt: Date; // When job was first detected (stable timestamp for grouping)
+  firstSeenAt: Date;
+  country: "canada" | "us";
 }
 
-type TimeSection = "today" | "last2days" | "earlierThisWeek";
+type TimeSection = "today" | "last2days" | "last7days";
+type Country = "canada" | "us";
 
 interface GroupedListings {
   today: Listing[];
   last2days: Listing[];
-  earlierThisWeek: Listing[];
+  last7days: Listing[];
 }
+
+// Canadian province/territory abbreviations
+const CANADA_PROVINCES = new Set([
+  "AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"
+]);
+
+// US state abbreviations
+const US_STATES = new Set([
+  "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID", "IL",
+  "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+  "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI",
+  "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "DC"
+]);
+
+function classifyCountry(location: string): Country {
+  const loc = location.toLowerCase().trim();
+  
+  // Direct country mentions
+  if (loc.includes("canada") || loc.endsWith(", canada")) {
+    return "canada";
+  }
+  if (loc.includes("united states") || loc.includes(", usa") || loc.includes(", us")) {
+    return "us";
+  }
+  
+  // Check for province/state abbreviations at the end or after comma
+  const parts = location.split(/[,\s]+/).map(p => p.trim().toUpperCase());
+  const lastPart = parts[parts.length - 1];
+  const secondLastPart = parts.length > 1 ? parts[parts.length - 2] : "";
+  
+  // Check last two parts for abbreviations
+  for (const part of [lastPart, secondLastPart]) {
+    if (CANADA_PROVINCES.has(part)) {
+      return "canada";
+    }
+    if (US_STATES.has(part)) {
+      return "us";
+    }
+  }
+  
+  // Check for "/ XX" pattern (e.g., "Toronto / ON")
+  const slashMatch = location.match(/\/\s*([A-Z]{2})\b/i);
+  if (slashMatch) {
+    const abbr = slashMatch[1].toUpperCase();
+    if (CANADA_PROVINCES.has(abbr)) return "canada";
+    if (US_STATES.has(abbr)) return "us";
+  }
+  
+  // Default to US for unknown/remote
+  return "us";
+}
+
+const COUNTRY_STORAGE_KEY = "listings-country-preference";
 
 export default function ListingsTab() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,6 +87,15 @@ export default function ListingsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TimeSection>("today");
+  const [selectedCountry, setSelectedCountry] = useState<Country>(() => {
+    const saved = localStorage.getItem(COUNTRY_STORAGE_KEY);
+    return saved === "us" ? "us" : "canada";
+  });
+
+  // Persist country selection
+  useEffect(() => {
+    localStorage.setItem(COUNTRY_STORAGE_KEY, selectedCountry);
+  }, [selectedCountry]);
 
   useEffect(() => {
     async function fetchListings() {
@@ -39,23 +103,15 @@ export default function ListingsTab() {
         setLoading(true);
         setError(null);
         
-        console.log("🔍 Fetching listings from opening_signals table...");
-        
         const { data, error: queryError } = await supabase
           .from('opening_signals')
           .select('id, company_name, role_title, location, term, apply_url, first_seen_at')
           .order('first_seen_at', { ascending: false })
-          .limit(200);
+          .limit(500);
 
         if (queryError) {
-          console.error("❌ Supabase query error:", queryError);
-          console.error("   Error code:", queryError.code);
-          console.error("   Error message:", queryError.message);
-          console.error("   Error details:", queryError.details);
-          console.error("   Error hint:", queryError.hint);
-          
           if (queryError.code === '42501' || queryError.message?.includes('permission denied') || queryError.message?.includes('RLS')) {
-            setError(`Permission denied: Missing RLS policy for 'opening_signals' table. Please create a policy that allows SELECT access.`);
+            setError(`Permission denied: Missing RLS policy for 'opening_signals' table.`);
           } else {
             setError(`Failed to fetch listings: ${queryError.message}`);
           }
@@ -63,12 +119,9 @@ export default function ListingsTab() {
         }
 
         if (!data) {
-          console.log("⚠️ No data returned from query");
           setListings([]);
           return;
         }
-
-        console.log(`✅ Successfully fetched ${data.length} rows from opening_signals`);
 
         const mappedListings: Listing[] = data.map((row) => ({
           id: row.id,
@@ -78,11 +131,11 @@ export default function ListingsTab() {
           term: row.term || '',
           applyUrl: row.apply_url || '',
           firstSeenAt: row.first_seen_at ? new Date(row.first_seen_at) : new Date(),
+          country: classifyCountry(row.location || ''),
         }));
 
         setListings(mappedListings);
       } catch (err) {
-        console.error("❌ Unexpected error:", err);
         setError(`Unexpected error: ${err instanceof Error ? err.message : 'Unknown error'}`);
       } finally {
         setLoading(false);
@@ -92,30 +145,35 @@ export default function ListingsTab() {
     fetchListings();
   }, []);
 
+  // Filter by country first
+  const countryFilteredListings = useMemo(() => {
+    return listings.filter((listing) => listing.country === selectedCountry);
+  }, [listings, selectedCountry]);
+
+  // Then filter by search
   const filteredListings = useMemo(() => {
-    if (!searchQuery.trim()) return listings;
+    if (!searchQuery.trim()) return countryFilteredListings;
     const query = searchQuery.toLowerCase();
-    return listings.filter(
+    return countryFilteredListings.filter(
       (listing) =>
         listing.company.toLowerCase().includes(query) ||
         listing.role.toLowerCase().includes(query) ||
         listing.location.toLowerCase().includes(query)
     );
-  }, [searchQuery, listings]);
+  }, [searchQuery, countryFilteredListings]);
 
   const groupedListings = useMemo((): GroupedListings => {
     const now = new Date();
     const todayStart = startOfDay(now);
-    const twoDaysAgoStart = startOfDay(subDays(now, 2));
-    const weekStart = startOfWeek(now, { weekStartsOn: 0 }); // Sunday
+    const twoDaysAgo = subHours(now, 48);
+    const sevenDaysAgo = subDays(now, 7);
 
     const groups: GroupedListings = {
       today: [],
       last2days: [],
-      earlierThisWeek: [],
+      last7days: [],
     };
 
-    // Sort by first_seen_at (when job was first detected)
     const sorted = [...filteredListings].sort((a, b) => {
       const timeA = a.firstSeenAt?.getTime() ?? 0;
       const timeB = b.firstSeenAt?.getTime() ?? 0;
@@ -127,12 +185,11 @@ export default function ListingsTab() {
 
       if (isAfter(listingDate, todayStart) || isEqual(listingDate, todayStart)) {
         groups.today.push(listing);
-      } else if (isAfter(listingDate, twoDaysAgoStart) || isEqual(listingDate, twoDaysAgoStart)) {
+      } else if (isAfter(listingDate, twoDaysAgo)) {
         groups.last2days.push(listing);
-      } else if (isAfter(listingDate, weekStart) || isEqual(listingDate, weekStart)) {
-        groups.earlierThisWeek.push(listing);
+      } else if (isAfter(listingDate, sevenDaysAgo)) {
+        groups.last7days.push(listing);
       }
-      // Older listings are ignored for now
     }
 
     return groups;
@@ -141,7 +198,7 @@ export default function ListingsTab() {
   const tabs: { key: TimeSection; label: string; count: number }[] = [
     { key: "today", label: "Today", count: groupedListings.today.length },
     { key: "last2days", label: "Last 2 Days", count: groupedListings.last2days.length },
-    { key: "earlierThisWeek", label: "This Week", count: groupedListings.earlierThisWeek.length },
+    { key: "last7days", label: "Last 7 Days", count: groupedListings.last7days.length },
   ];
 
   const activeListings = groupedListings[activeTab];
@@ -160,6 +217,11 @@ export default function ListingsTab() {
     });
   };
 
+  const countryTabs: { key: Country; label: string }[] = [
+    { key: "canada", label: "Canada" },
+    { key: "us", label: "US" },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -167,7 +229,7 @@ export default function ListingsTab() {
       </div>
 
       {/* Search bar */}
-      <div className="relative mb-6">
+      <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
           placeholder="Search by company, role, or location…"
@@ -175,6 +237,24 @@ export default function ListingsTab() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9 bg-white"
         />
+      </div>
+
+      {/* Country segmented control */}
+      <div className="flex gap-1 p-1 bg-muted rounded-lg mb-4 w-fit">
+        {countryTabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setSelectedCountry(tab.key)}
+            className={cn(
+              "px-4 py-2 text-sm font-medium rounded-md transition-colors",
+              selectedCountry === tab.key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* Loading state */}
@@ -193,7 +273,7 @@ export default function ListingsTab() {
         </div>
       )}
 
-      {/* Segmented control for recency tabs */}
+      {/* Time tabs */}
       {!loading && !error && filteredListings.length > 0 && (
         <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit">
           {tabs.map((tab) => (
@@ -220,6 +300,8 @@ export default function ListingsTab() {
             <div className="text-center py-12 text-muted-foreground">
               {listings.length === 0 
                 ? "No listings found in the database."
+                : countryFilteredListings.length === 0
+                ? `No listings found for ${selectedCountry === "canada" ? "Canada" : "US"}.`
                 : "No listings match your search."}
             </div>
           ) : activeListings.length === 0 ? (
