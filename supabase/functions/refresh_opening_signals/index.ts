@@ -586,38 +586,6 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Step 1: Stale cleanup - mark listings inactive if not seen in 48 hours
-    console.log('🧹 Running stale cleanup (marking listings inactive if last_seen_at < 48 hours)...');
-    let deactivated = 0;
-    
-    // Try to use the RPC function first (if it exists)
-    const { data: staleCleanupResult, error: staleError } = await supabase.rpc('update_opening_signals_is_active');
-    
-    if (staleError) {
-      // Fallback: Direct SQL update if RPC function doesn't exist
-      console.log('⚠️ RPC function not available, using direct update...');
-      const { data: updateData, error: updateError } = await supabase
-        .from('opening_signals')
-        .update({ is_active: false })
-        .eq('is_active', true)
-        .lt('last_seen_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
-        .select('id');
-      
-      if (updateError) {
-        console.warn('⚠️ Stale cleanup error (non-fatal):', updateError);
-        debugInfo.stale_cleanup.error = updateError.message;
-      } else {
-        deactivated = updateData?.length || 0;
-        debugInfo.stale_cleanup.deactivated = deactivated;
-        console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive`);
-      }
-    } else {
-      // RPC function returned the count
-      deactivated = staleCleanupResult || 0;
-      debugInfo.stale_cleanup.deactivated = deactivated;
-      console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive`);
-    }
-
     console.log('🚀 Starting fetch from GitHub...');
     
     // Try structured sources first (if available)
@@ -878,15 +846,45 @@ serve(async (req) => {
     // Counts omitted for now - can be computed later via lightweight approach
     const inserted = 0;
     const updated = 0;
-    // deactivated is already set above from stale cleanup
     
     const totalUpserted = upsertedData?.length || activeRecords.length;
     debugInfo.upsert.inserted = inserted;
     debugInfo.upsert.updated = updated;
     debugInfo.upsert.total = totalUpserted;
     
-    console.log(`✅ Upserted ${totalUpserted} records`);
-    console.log(`🧹 Stale cleanup: ${deactivated} listings marked as inactive`);
+    console.log(`✅ Upserted ${totalUpserted} records (all with posted_at and age_days)`);
+    
+    // Step 2: Stale cleanup AFTER upsert - mark listings inactive if not seen in 48 hours
+    // This ensures legacy rows that weren't in the current fetch are marked inactive
+    console.log('🧹 Running stale cleanup (marking listings inactive if last_seen_at < 48 hours)...');
+    let deactivated = 0;
+    
+    // Try RPC function first, fall back to direct update
+    const { data: staleCleanupResult, error: staleError } = await supabase.rpc('update_opening_signals_is_active');
+    
+    if (staleError) {
+      // Fallback: direct update query
+      const { data: updateData, error: updateError } = await supabase
+        .from('opening_signals')
+        .update({ is_active: false })
+        .eq('is_active', true)
+        .lt('last_seen_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+        .select('id');
+      
+      if (updateError) {
+        console.warn('⚠️ Stale cleanup error (non-fatal):', updateError);
+        debugInfo.stale_cleanup.error = updateError.message;
+      } else {
+        deactivated = updateData?.length || 0;
+        debugInfo.stale_cleanup.deactivated = deactivated;
+        console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive`);
+      }
+    } else {
+      // RPC function returned the count
+      deactivated = staleCleanupResult || 0;
+      debugInfo.stale_cleanup.deactivated = deactivated;
+      console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive`);
+    }
 
     const duration = Date.now() - startTime;
     debugInfo.duration_ms = duration;
