@@ -119,36 +119,18 @@ export default function ListingsTab() {
     fetchUserPreferences();
   }, []);
 
-  // Update last_seen_listings_at when leaving page
-  const updateLastSeenTimestamp = useCallback(async () => {
+  // Mark listings as seen when user clicks the New tab
+  const markListingsAsSeen = useCallback(async () => {
     if (!userId) return;
+    
+    const now = new Date();
+    setLastSeenListingsAt(now);
     
     await supabase
       .from('user_preferences')
-      .update({ last_seen_listings_at: new Date().toISOString() })
+      .update({ last_seen_listings_at: now.toISOString() })
       .eq('user_id', userId);
   }, [userId]);
-
-  // Update timestamp on unmount
-  useEffect(() => {
-    return () => {
-      updateLastSeenTimestamp();
-    };
-  }, [updateLastSeenTimestamp]);
-
-  // Also update on visibility change (tab hidden/closed)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        updateLastSeenTimestamp();
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [updateLastSeenTimestamp]);
 
   useEffect(() => {
     async function fetchListings() {
@@ -360,22 +342,33 @@ export default function ListingsTab() {
       {/* Time tabs */}
       {!loading && !error && filteredListings.length > 0 && (
         <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6 w-fit overflow-x-auto">
-          {visibleTabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap",
-                activeTab === tab.key
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-                tab.key === "new" && activeTab === tab.key && "text-amber-600"
-              )}
-            >
-              {tab.icon}
-              {tab.label} ({tab.count})
-            </button>
-          ))}
+          {visibleTabs.map((tab) => {
+            const showRedDot = tab.key === "new" && tab.count > 0 && activeTab !== "new";
+            return (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  if (tab.key === "new") {
+                    markListingsAsSeen();
+                  }
+                }}
+                className={cn(
+                  "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap relative",
+                  activeTab === tab.key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                  tab.key === "new" && activeTab === tab.key && "text-amber-600"
+                )}
+              >
+                {tab.icon}
+                {tab.label} ({tab.count})
+                {showRedDot && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
