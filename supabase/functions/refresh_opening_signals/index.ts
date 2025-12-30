@@ -1049,6 +1049,10 @@ serve(async (req) => {
       debugInfo.parsing.active_tables = activeTables.length;
       debugInfo.parsing.inactive_tables = inactiveTables.length;
       console.log(`   Found ${activeTables.length} active table(s) and ${inactiveTables.length} inactive table(s)`);
+      
+      // These will be used to build active_set and inactive_set after parsing
+      let ACTIVE_URLS_FINAL: Set<string> | null = null;
+      let INACTIVE_URLS_FINAL: Set<string> | null = null;
 
       // Parse active roles with error tracking
       let activeRows: ParsedRow[] = [];
@@ -1121,6 +1125,10 @@ serve(async (req) => {
       debugInfo.parsing.active_urls_count = ACTIVE_URLS.size;
       debugInfo.parsing.inactive_urls_count = INACTIVE_URLS.size;
       debugInfo.parsing.urls_in_both_count = Array.from(ACTIVE_URLS).filter(url => INACTIVE_URLS.has(url)).length;
+      
+      // Store final sets for post-upsert is_active updates
+      ACTIVE_URLS_FINAL = new Set(ACTIVE_URLS);
+      INACTIVE_URLS_FINAL = new Set(INACTIVE_URLS);
       
       // Fill-down company names based on original DOM order BEFORE any reordering/upsert
       // This ensures ↳ symbols refer to the previous row in the original page order
@@ -1327,31 +1335,40 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const term = TERM;
     
-    // Rebuild ACTIVE_URLS and INACTIVE_URLS sets from parsed rows (for is_active determination)
+    // Use the final URL sets from parsing (if available) or rebuild from parsed rows
     // These sets determine is_active based on Simplify's active/inactive sections
-    const ACTIVE_URLS_FOR_IS_ACTIVE = new Set<string>();
-    const INACTIVE_URLS_FOR_IS_ACTIVE = new Set<string>();
+    let ACTIVE_URLS_FOR_IS_ACTIVE: Set<string>;
+    let INACTIVE_URLS_FOR_IS_ACTIVE: Set<string>;
     
-    for (const row of parsedRows) {
-      if (row.apply_url && isValidApplyUrl(row.apply_url)) {
-        const normalizedUrl = row.apply_url.toLowerCase().trim();
-        if (row._isActive === true) {
-          ACTIVE_URLS_FOR_IS_ACTIVE.add(normalizedUrl);
-        } else if (row._isActive === false) {
-          INACTIVE_URLS_FOR_IS_ACTIVE.add(normalizedUrl);
+    if (ACTIVE_URLS_FINAL && INACTIVE_URLS_FINAL) {
+      // Use the sets built during parsing
+      ACTIVE_URLS_FOR_IS_ACTIVE = ACTIVE_URLS_FINAL;
+      INACTIVE_URLS_FOR_IS_ACTIVE = INACTIVE_URLS_FINAL;
+    } else {
+      // Fallback: rebuild from parsed rows
+      ACTIVE_URLS_FOR_IS_ACTIVE = new Set<string>();
+      INACTIVE_URLS_FOR_IS_ACTIVE = new Set<string>();
+      
+      for (const row of parsedRows) {
+        if (row.apply_url && isValidApplyUrl(row.apply_url)) {
+          const normalizedUrl = row.apply_url.toLowerCase().trim();
+          if (row._isActive === true) {
+            ACTIVE_URLS_FOR_IS_ACTIVE.add(normalizedUrl);
+          } else if (row._isActive === false) {
+            INACTIVE_URLS_FOR_IS_ACTIVE.add(normalizedUrl);
+          }
+        }
+      }
+      
+      // Handle tie-break: URLs in both sets should be active
+      for (const url of Array.from(INACTIVE_URLS_FOR_IS_ACTIVE)) {
+        if (ACTIVE_URLS_FOR_IS_ACTIVE.has(url)) {
+          ACTIVE_URLS_FOR_IS_ACTIVE.add(url);
         }
       }
     }
     
-    // Handle tie-break: URLs in both sets should be active
-    for (const url of Array.from(INACTIVE_URLS_FOR_IS_ACTIVE)) {
-      if (ACTIVE_URLS_FOR_IS_ACTIVE.has(url)) {
-        // URL is in both - already handled by _isActive=true, but ensure it's in active set
-        ACTIVE_URLS_FOR_IS_ACTIVE.add(url);
-      }
-    }
-    
-    console.log(`📊 URL sets for is_active: ${ACTIVE_URLS_FOR_IS_ACTIVE.size} active, ${INACTIVE_URLS_FOR_IS_ACTIVE.size} inactive-only`);
+    console.log(`📊 URL sets for is_active: ${ACTIVE_URLS_FOR_IS_ACTIVE.size} active, ${INACTIVE_URLS_FOR_IS_ACTIVE.size} inactive`);
     
     // Final safety check: filter out any rows with invalid apply_url (shouldn't happen, but extra safety)
     const validRows = parsedRows.filter(row => !row.apply_url || isValidApplyUrl(row.apply_url));
@@ -1559,6 +1576,78 @@ serve(async (req) => {
     debugInfo.upsert.total = totalUpserted;
     
     console.log(`✅ Upserted ${totalUpserted} records (all with posted_at and age_days)`);
+    
+    // Step 1: Explicitly set is_active based on current scrape
+    // This ensures all rows are correctly marked based on Simplify's active/inactive sections
+    console.log('🔄 Explicitly setting is_active based on current scrape...');
+    
+    // Build final active_set and inactive_set
+    // active_set: URLs from "Active roles" tables (tie-break: if in both, mark active)
+    // inactive_set: URLs from "Inactive roles" tables that are NOT in active_set
+    const active_set = new Set<string>(ACTIVE_URLS_FOR_IS_ACTIVE);
+    const inactive_set = new Set<string>();
+    
+    // Add to inactive_set only URLs that are NOT in active_set
+    for (const url of INACTIVE_URLS_FOR_IS_ACTIVE) {
+      if (!active_set.has(url)) {
+        inactive_set.add(url);
+      }
+    }
+    
+    console.log(`📊 Final sets: ${active_set.size} active URLs, ${inactive_set.size} inactive-only URLs`);
+    debugInfo.is_active.final_active_set_size = active_set.size;
+    debugInfo.is_active.final_inactive_set_size = inactive_set.size;
+    
+    // Update all rows in active_set to is_active = true
+    if (active_set.size > 0) {
+      const activeUrlsArray = Array.from(active_set);
+      // Process in batches to avoid URL length limits
+      const batchSize = 500;
+      let activeUpdated = 0;
+      
+      for (let i = 0; i < activeUrlsArray.length; i += batchSize) {
+        const batch = activeUrlsArray.slice(i, i + batchSize);
+        const { error: activeUpdateError } = await supabase
+          .from('opening_signals')
+          .update({ is_active: true })
+          .in('apply_url', batch);
+        
+        if (activeUpdateError) {
+          console.warn(`⚠️ Error updating active set (batch ${i / batchSize + 1}):`, activeUpdateError.message);
+        } else {
+          activeUpdated += batch.length;
+        }
+      }
+      
+      console.log(`✅ Set is_active=true for ${activeUpdated} rows in active_set`);
+    }
+    
+    // Update all rows in inactive_set to is_active = false
+    if (inactive_set.size > 0) {
+      const inactiveUrlsArray = Array.from(inactive_set);
+      // Process in batches to avoid URL length limits
+      const batchSize = 500;
+      let inactiveUpdated = 0;
+      
+      for (let i = 0; i < inactiveUrlsArray.length; i += batchSize) {
+        const batch = inactiveUrlsArray.slice(i, i + batchSize);
+        const { error: inactiveUpdateError } = await supabase
+          .from('opening_signals')
+          .update({ is_active: false })
+          .in('apply_url', batch);
+        
+        if (inactiveUpdateError) {
+          console.warn(`⚠️ Error updating inactive set (batch ${i / batchSize + 1}):`, inactiveUpdateError.message);
+        } else {
+          inactiveUpdated += batch.length;
+        }
+      }
+      
+      console.log(`✅ Set is_active=false for ${inactiveUpdated} rows in inactive_set`);
+    }
+    
+    // Rows not seen in this run will be handled by stale cleanup (marked inactive if last_seen_at < 48h)
+    // This is already handled in the stale cleanup step below
     
     // VERIFICATION: Ensure no apply_url with is_active=true exists if it was only in inactive section
     console.log('🔍 Verifying is_active assignment: checking for active URLs that should be inactive...');
