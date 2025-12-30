@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const DEBUG = Deno.env.get("DEBUG_LOGS") === "true";
+
 const GITHUB_URL = 'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/master/README.md';
 const TERM = 'Summer 2026';
 // Alternative structured sources to check (if available in future)
@@ -462,7 +464,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
           // Check if cell looks like age (e.g., "0d", "3d", "5d")
           if (cell.match(/^\d+d?$/i)) {
             ageColumnIdx = i;
-            console.log(`[DEBUG] Found Age column at index ${i} by pattern matching: "${cell}"`);
+            if (DEBUG) console.log(`[DEBUG] Found Age column at index ${i} by pattern matching: "${cell}"`);
             break;
           }
         }
@@ -484,7 +486,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
             const now = Date.now();
             const postedDate = new Date(now - ageDays * 24 * 60 * 60 * 1000);
             postedAt = postedDate.toISOString();
-            console.log(`[DEBUG] Parsed age: "${ageCell}" → ${ageDays} days, posted_at: ${postedAt}`);
+            if (DEBUG) console.log(`[DEBUG] Parsed age: "${ageCell}" → ${ageDays} days, posted_at: ${postedAt}`);
           } else {
             // Try to parse as actual date if provided
             try {
@@ -495,7 +497,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
                 const now = new Date();
                 const diffTime = now.getTime() - parsedDate.getTime();
                 ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                console.log(`[DEBUG] Parsed date: ${postedAt}, age_days: ${ageDays}`);
+                if (DEBUG) console.log(`[DEBUG] Parsed date: ${postedAt}, age_days: ${ageDays}`);
               }
             } catch (e) {
               // Ignore date parsing errors
@@ -509,7 +511,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       if (ageDays === null && postedAt === null) {
         ageDays = 0;
         postedAt = new Date().toISOString();
-        console.log(`[DEBUG] Age missing or empty, defaulting to age_days=0, posted_at=now()`);
+        if (DEBUG) console.log(`[DEBUG] Age missing or empty, defaulting to age_days=0, posted_at=now()`);
       }
       
       // Ensure posted_at and age_days are always set together
@@ -519,7 +521,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         const postedDate = new Date(postedAt);
         const diffTime = now.getTime() - postedDate.getTime();
         ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        console.log(`[DEBUG] Calculated age_days=${ageDays} from posted_at=${postedAt}`);
+        if (DEBUG) console.log(`[DEBUG] Calculated age_days=${ageDays} from posted_at=${postedAt}`);
       }
       
       // If age_days is set but posted_at is null, calculate posted_at from age_days
@@ -527,7 +529,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         const now = Date.now();
         const postedDate = new Date(now - ageDays * 24 * 60 * 60 * 1000);
         postedAt = postedDate.toISOString();
-        console.log(`[DEBUG] Calculated posted_at=${postedAt} from age_days=${ageDays}`);
+        if (DEBUG) console.log(`[DEBUG] Calculated posted_at=${postedAt} from age_days=${ageDays}`);
       }
       
       rows.push({
