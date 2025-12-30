@@ -67,7 +67,7 @@ export default function ListingsTab() {
     localStorage.setItem("listings-country-filter", countryFilter);
   }, [countryFilter]);
 
-  // Fetch user preferences (last_seen_listings_at)
+  // Fetch user preferences (last_seen_listings_at) and auto-initialize if NULL
   useEffect(() => {
     async function fetchUserPreferences() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -77,20 +77,42 @@ export default function ListingsTab() {
 
       const { data, error } = await supabase
         .from('user_preferences')
-        .select('last_seen_listings_at')
+        .select('last_seen_listings_at, last_login')
         .eq('user_id', user.id)
         .maybeSingle();
 
       if (error) {
-        console.error('Error fetching user preferences:', error);
+        console.error('[New Logic] Error fetching user preferences:', error);
         return;
       }
 
-      // If data exists, set the timestamp (null means "everything is new")
-      // We do NOT auto-initialize for new users - they see everything as New until they click "Mark all as seen"
       if (data) {
-        setLastSeenListingsAt(data.last_seen_listings_at);
-        console.log('[New Logic] User last_seen_listings_at:', data.last_seen_listings_at);
+        // Compute cutoff = max(last_login, last_seen_listings_at)
+        // If last_seen_listings_at is NULL, auto-initialize to now() to prevent all listings being "New"
+        let cutoff = data.last_seen_listings_at;
+        
+        if (!cutoff) {
+          // Auto-initialize: set to now() in DB and local state
+          const now = new Date().toISOString();
+          console.log('[New Logic] last_seen_listings_at is NULL, auto-initializing to:', now);
+          
+          const { error: updateError } = await supabase
+            .from('user_preferences')
+            .update({ last_seen_listings_at: now })
+            .eq('user_id', user.id);
+          
+          if (updateError) {
+            console.error('[New Logic] Error auto-initializing last_seen_listings_at:', updateError);
+          }
+          cutoff = now;
+        } else if (data.last_login && new Date(data.last_login) > new Date(cutoff)) {
+          // Use last_login if it's more recent than last_seen_listings_at
+          cutoff = data.last_login;
+          console.log('[New Logic] Using last_login as cutoff:', cutoff);
+        }
+        
+        setLastSeenListingsAt(cutoff);
+        console.log('[New Logic] Final cutoff:', cutoff);
       }
     }
 
@@ -182,8 +204,8 @@ export default function ListingsTab() {
 
       switch (activeTab) {
         case "new":
-          // If user has no last_seen_listings_at, everything is "New"
-          if (!lastSeenListingsAt) return true;
+          // If cutoff not loaded yet, show nothing as new (loading state)
+          if (!lastSeenListingsAt) return false;
           // Use posted_at for New determination
           if (!postedAt) return false;
           return postedAt > new Date(lastSeenListingsAt);
@@ -226,14 +248,17 @@ export default function ListingsTab() {
     let last2DaysCount = 0;
     let last7DaysCount = 0;
 
+    // Log sample posted_at values for verification
+    const sampleListings = countryFilteredListings.slice(0, 3);
+    console.log('[New Logic] Cutoff:', lastSeenListingsAt);
+    console.log('[New Logic] Sample listings posted_at:', sampleListings.map(l => ({ company: l.company, postedAt: l.postedAt })));
+
     countryFilteredListings.forEach(listing => {
       const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
       const firstSeen = new Date(listing.firstSeenAt);
 
-      // New count: use posted_at, if null last_seen_listings_at then everything is new
-      if (!lastSeenListingsAt) {
-        newCount++;
-      } else if (postedAt && postedAt > new Date(lastSeenListingsAt)) {
+      // New count: only if cutoff is set and posted_at > cutoff
+      if (lastSeenListingsAt && postedAt && postedAt > new Date(lastSeenListingsAt)) {
         newCount++;
       }
       
@@ -242,7 +267,7 @@ export default function ListingsTab() {
       if (firstSeen >= sevenDaysAgo) last7DaysCount++;
     });
     
-    console.log('[New Logic] New count:', newCount, '| last_seen_listings_at:', lastSeenListingsAt);
+    console.log('[New Logic] Computed New count:', newCount);
 
     return {
       new: newCount,
@@ -294,8 +319,8 @@ export default function ListingsTab() {
   };
 
   const isNewListing = (listing: Listing) => {
-    // If user has no last_seen_listings_at, everything is "New"
-    if (!lastSeenListingsAt) return true;
+    // If cutoff not loaded yet, nothing is new
+    if (!lastSeenListingsAt) return false;
     // Use posted_at for New determination
     if (!listing.postedAt) return false;
     return new Date(listing.postedAt) > new Date(lastSeenListingsAt);
