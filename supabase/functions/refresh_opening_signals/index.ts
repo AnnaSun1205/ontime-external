@@ -637,8 +637,11 @@ function verifyCompanyUrlAlignment(
   for (const row of rows) {
     if (!row.apply_url) continue; // Skip rows without apply_url
     
-    const url = row.apply_url.trim();
-    const company = row.company_name.trim();
+    const url = (row.apply_url || '').trim();
+    const company = (row.company_name || '').trim();
+    
+    // Skip if both are empty
+    if (!url && !company) continue;
     
     // Store pair in original order
     pairs.push({
@@ -679,7 +682,10 @@ function verifyCompanyUrlAlignment(
     console.log(`📋 Sample company-URL pairs (first ${sampleSize} in original order):`);
     for (let i = 0; i < Math.min(10, samplePairs.length); i++) {
       const pair = samplePairs[i];
-      console.log(`   ${i + 1}. ${pair.company_name} → ${pair.apply_url.substring(0, 60)}${pair.apply_url.length > 60 ? '...' : ''}`);
+      const url = pair.apply_url || '';
+      const company = pair.company_name || '';
+      const truncatedUrl = url.length > 60 ? url.substring(0, 60) + '...' : url;
+      console.log(`   ${i + 1}. ${company} → ${truncatedUrl}`);
     }
     if (samplePairs.length > 10) {
       console.log(`   ... and ${samplePairs.length - 10} more pairs`);
@@ -1262,13 +1268,16 @@ serve(async (req) => {
         console.log(`✅ Database verification passed: All apply_urls map to exactly one company_name`);
         
         // Log sample of database company-URL pairs for verification
-        const dbSampleSize = Math.min(10, dbConflicts.length);
-        if (dbSampleSize > 0) {
+        const dbSampleSize = Math.min(10, dbConflicts?.length || 0);
+        if (dbSampleSize > 0 && dbConflicts) {
           console.log(`📋 Sample database company-URL pairs (first ${dbSampleSize}):`);
           for (let i = 0; i < dbSampleSize; i++) {
             const row = dbConflicts[i];
-            if (row.apply_url && row.company_name) {
-              console.log(`   ${i + 1}. ${row.company_name} → ${row.apply_url.substring(0, 60)}${row.apply_url.length > 60 ? '...' : ''}`);
+            if (row && row.apply_url && row.company_name) {
+              const url = row.apply_url || '';
+              const company = row.company_name || '';
+              const truncatedUrl = url.length > 60 ? url.substring(0, 60) + '...' : url;
+              console.log(`   ${i + 1}. ${company} → ${truncatedUrl}`);
             }
           }
         }
@@ -1278,10 +1287,10 @@ serve(async (req) => {
           database_check: {
             isValid: true,
             conflict_count: 0,
-            total_pairs: dbConflicts.length,
-            sample_pairs: dbConflicts.slice(0, 20).map(r => ({
-              company_name: r.company_name || '',
-              apply_url: r.apply_url || ''
+            total_pairs: dbConflicts?.length || 0,
+            sample_pairs: (dbConflicts || []).slice(0, 20).map(r => ({
+              company_name: r?.company_name || '',
+              apply_url: r?.apply_url || ''
             }))
           }
         };
