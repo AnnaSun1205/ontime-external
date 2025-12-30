@@ -1219,13 +1219,14 @@ serve(async (req) => {
           error: dbCheckError.message
         }
       };
-    } else if (dbConflicts) {
+    } else if (dbConflicts && Array.isArray(dbConflicts)) {
       // Group by apply_url and check for multiple company_names
       const urlToCompanies = new Map<string, Set<string>>();
       for (const row of dbConflicts) {
-        if (!row.apply_url) continue;
-        const url = row.apply_url.trim();
-        const company = row.company_name?.trim() || '';
+        if (!row || !row.apply_url) continue;
+        const url = (row.apply_url || '').trim();
+        const company = (row.company_name || '').trim();
+        if (!url) continue;
         if (!urlToCompanies.has(url)) {
           urlToCompanies.set(url, new Set());
         }
@@ -1268,14 +1269,15 @@ serve(async (req) => {
         console.log(`✅ Database verification passed: All apply_urls map to exactly one company_name`);
         
         // Log sample of database company-URL pairs for verification
-        const dbSampleSize = Math.min(10, dbConflicts?.length || 0);
-        if (dbSampleSize > 0 && dbConflicts) {
+        const dbConflictsArray = Array.isArray(dbConflicts) ? dbConflicts : [];
+        const dbSampleSize = Math.min(10, dbConflictsArray.length);
+        if (dbSampleSize > 0) {
           console.log(`📋 Sample database company-URL pairs (first ${dbSampleSize}):`);
           for (let i = 0; i < dbSampleSize; i++) {
-            const row = dbConflicts[i];
+            const row = dbConflictsArray[i];
             if (row && row.apply_url && row.company_name) {
-              const url = row.apply_url || '';
-              const company = row.company_name || '';
+              const url = String(row.apply_url || '');
+              const company = String(row.company_name || '');
               const truncatedUrl = url.length > 60 ? url.substring(0, 60) + '...' : url;
               console.log(`   ${i + 1}. ${company} → ${truncatedUrl}`);
             }
@@ -1287,10 +1289,10 @@ serve(async (req) => {
           database_check: {
             isValid: true,
             conflict_count: 0,
-            total_pairs: dbConflicts?.length || 0,
-            sample_pairs: (dbConflicts || []).slice(0, 20).map(r => ({
-              company_name: r?.company_name || '',
-              apply_url: r?.apply_url || ''
+            total_pairs: dbConflictsArray.length,
+            sample_pairs: dbConflictsArray.slice(0, 20).map(r => ({
+              company_name: String(r?.company_name || ''),
+              apply_url: String(r?.apply_url || '')
             }))
           }
         };
@@ -1298,10 +1300,14 @@ serve(async (req) => {
       
       // GUARDRAIL 2: Check for duplicate apply_urls (multiple rows with same URL)
       const urlCounts = new Map<string, number>();
-      for (const row of dbConflicts) {
-        if (!row.apply_url) continue;
-        const url = row.apply_url.trim();
-        urlCounts.set(url, (urlCounts.get(url) || 0) + 1);
+      if (dbConflicts && Array.isArray(dbConflicts)) {
+        for (const row of dbConflicts) {
+          if (!row || !row.apply_url) continue;
+          const url = (row.apply_url || '').trim();
+          if (url) {
+            urlCounts.set(url, (urlCounts.get(url) || 0) + 1);
+          }
+        }
       }
       
       const duplicateUrls: Array<{ apply_url: string; count: number }> = [];
