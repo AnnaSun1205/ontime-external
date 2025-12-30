@@ -924,7 +924,13 @@ serve(async (req) => {
       
       // VERIFICATION: Check company ↔ apply_url alignment after fill-down, before deduplication
       console.log('🔍 Verifying company ↔ apply_url alignment...');
-      const verification = verifyCompanyUrlAlignment(filledRows, 'simplifyjobs_github');
+      let verification;
+      try {
+        verification = verifyCompanyUrlAlignment(filledRows, 'simplifyjobs_github');
+      } catch (verifyError) {
+        console.error('❌ Error during verification:', verifyError);
+        throw new Error(`Verification failed: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`);
+      }
       
       if (!verification.isValid) {
         const conflictCount = verification.conflicts.length;
@@ -971,7 +977,13 @@ serve(async (req) => {
       // GUARDRAIL 1: Verify company ↔ apply_url alignment again AFTER deduplication
       // This ensures the actual upsert set has no conflicts
       console.log('🔍 Verifying company ↔ apply_url alignment on deduplicated rows (upsert set)...');
-      const postDedupVerification = verifyCompanyUrlAlignment(uniqueActiveRows, 'simplifyjobs_github');
+      let postDedupVerification;
+      try {
+        postDedupVerification = verifyCompanyUrlAlignment(uniqueActiveRows, 'simplifyjobs_github');
+      } catch (verifyError) {
+        console.error('❌ Error during post-dedup verification:', verifyError);
+        throw new Error(`Post-dedup verification failed: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`);
+      }
       
       if (!postDedupVerification.isValid) {
         const conflictCount = postDedupVerification.conflicts.length;
