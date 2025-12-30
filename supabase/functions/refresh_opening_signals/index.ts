@@ -1327,10 +1327,56 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const term = TERM;
     
+    // Rebuild ACTIVE_URLS and INACTIVE_URLS sets from parsed rows (for is_active determination)
+    // These sets determine is_active based on Simplify's active/inactive sections
+    const ACTIVE_URLS_FOR_IS_ACTIVE = new Set<string>();
+    const INACTIVE_URLS_FOR_IS_ACTIVE = new Set<string>();
+    
+    for (const row of parsedRows) {
+      if (row.apply_url && isValidApplyUrl(row.apply_url)) {
+        const normalizedUrl = row.apply_url.toLowerCase().trim();
+        if (row._isActive === true) {
+          ACTIVE_URLS_FOR_IS_ACTIVE.add(normalizedUrl);
+        } else if (row._isActive === false) {
+          INACTIVE_URLS_FOR_IS_ACTIVE.add(normalizedUrl);
+        }
+      }
+    }
+    
+    // Handle tie-break: URLs in both sets should be active
+    for (const url of Array.from(INACTIVE_URLS_FOR_IS_ACTIVE)) {
+      if (ACTIVE_URLS_FOR_IS_ACTIVE.has(url)) {
+        // URL is in both - already handled by _isActive=true, but ensure it's in active set
+        ACTIVE_URLS_FOR_IS_ACTIVE.add(url);
+      }
+    }
+    
+    console.log(`📊 URL sets for is_active: ${ACTIVE_URLS_FOR_IS_ACTIVE.size} active, ${INACTIVE_URLS_FOR_IS_ACTIVE.size} inactive-only`);
+    
     // Final safety check: filter out any rows with invalid apply_url (shouldn't happen, but extra safety)
     const validRows = parsedRows.filter(row => !row.apply_url || isValidApplyUrl(row.apply_url));
     if (validRows.length !== parsedRows.length) {
       console.warn(`⚠️ Filtered out ${parsedRows.length - validRows.length} rows with invalid apply_url before upsert`);
+    }
+    
+    // Fetch existing rows to check current is_active status (for flipped count)
+    const listingHashesForCheck = validRows.map(r => {
+      // We'll compute hash later, but for now just get apply_urls
+      return r.apply_url;
+    }).filter(url => url && isValidApplyUrl(url));
+    
+    const { data: existingForFlipCheck } = await supabase
+      .from('opening_signals')
+      .select('apply_url, is_active')
+      .in('apply_url', Array.from(listingHashesForCheck).slice(0, 1000)); // Limit to avoid URL length issues
+    
+    const existingIsActiveMap = new Map<string, boolean>();
+    if (existingForFlipCheck) {
+      for (const row of existingForFlipCheck) {
+        if (row.apply_url && isValidApplyUrl(row.apply_url)) {
+          existingIsActiveMap.set(row.apply_url.toLowerCase().trim(), row.is_active === true);
+        }
+      }
     }
     
     // Compute listing_hash for each row and prepare records
@@ -1375,15 +1421,21 @@ serve(async (req) => {
           finalAgeDays = 0;
         }
         
-        // Determine is_active: use _isActive flag if present, else default based on URL presence
-        // _isActive is set during parsing: true for active section, false for inactive section
-        // If URL appears in both sections, _isActive will be true (tie-break)
-        let isActive = true; // Default to true
-        if (row._isActive !== undefined) {
-          isActive = row._isActive;
-        } else if (row.apply_url && isValidApplyUrl(row.apply_url)) {
-          // Fallback: if no _isActive flag, assume active (shouldn't happen)
-          isActive = true;
+        // Determine is_active based on ACTIVE_URLS and INACTIVE_URLS sets
+        // This ensures is_active matches Simplify's active/inactive sections
+        let isActive = false; // Default to inactive
+        if (row.apply_url && isValidApplyUrl(row.apply_url)) {
+          const normalizedUrl = row.apply_url.toLowerCase().trim();
+          // If URL is in ACTIVE_URLS, mark as active (tie-break: if in both, mark active)
+          if (ACTIVE_URLS_FOR_IS_ACTIVE.has(normalizedUrl)) {
+            isActive = true;
+          } else if (INACTIVE_URLS_FOR_IS_ACTIVE.has(normalizedUrl)) {
+            // URL is only in inactive set
+            isActive = false;
+          } else {
+            // URL not in either set (shouldn't happen, but fallback to inactive)
+            isActive = false;
+          }
         } else {
           // No valid URL - default to inactive
           isActive = false;
@@ -1686,35 +1738,51 @@ serve(async (req) => {
     }
     
     // Step 2: Stale cleanup AFTER upsert - mark listings inactive if not seen in 48 hours
-    // This ensures legacy rows that weren't in the current fetch are marked inactive
-    console.log('🧹 Running stale cleanup (marking listings inactive if last_seen_at < 48 hours)...');
+    // BUT: Don't mark inactive if they're in our current ACTIVE_URLS set
+    // This ensures we don't override is_active for rows that are in Simplify's active section
+    console.log('🧹 Running stale cleanup (marking listings inactive if last_seen_at < 48 hours AND not in current active set)...');
     let deactivated = 0;
     
-    // Try RPC function first, fall back to direct update
-    const { data: staleCleanupResult, error: staleError } = await supabase.rpc('update_opening_signals_is_active');
+    // Get stale listings (not seen in 48 hours)
+    const staleThreshold = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: staleListings, error: staleFetchError } = await supabase
+      .from('opening_signals')
+      .select('id, apply_url, is_active')
+      .eq('is_active', true)
+      .lt('last_seen_at', staleThreshold);
     
-    if (staleError) {
-      // Fallback: direct update query
-      const { data: updateData, error: updateError } = await supabase
-        .from('opening_signals')
-        .update({ is_active: false })
-        .eq('is_active', true)
-        .lt('last_seen_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
-        .select('id');
+    if (staleFetchError) {
+      console.warn('⚠️ Stale cleanup fetch error (non-fatal):', staleFetchError);
+      debugInfo.stale_cleanup.error = staleFetchError.message;
+    } else if (staleListings && Array.isArray(staleListings)) {
+      // Filter out URLs that are in current active set
+      const staleToDeactivate = staleListings.filter(row => {
+        if (!row.apply_url || !isValidApplyUrl(row.apply_url)) return true; // Deactivate if no valid URL
+        const normalizedUrl = row.apply_url.toLowerCase().trim();
+        // Don't deactivate if URL is in current active set
+        return !ACTIVE_URLS_FOR_IS_ACTIVE.has(normalizedUrl);
+      });
       
-      if (updateError) {
-        console.warn('⚠️ Stale cleanup error (non-fatal):', updateError);
-        debugInfo.stale_cleanup.error = updateError.message;
+      if (staleToDeactivate.length > 0) {
+        const staleIds = staleToDeactivate.map(r => r.id);
+        const { data: updateData, error: updateError } = await supabase
+          .from('opening_signals')
+          .update({ is_active: false })
+          .in('id', staleIds)
+          .select('id');
+        
+        if (updateError) {
+          console.warn('⚠️ Stale cleanup update error (non-fatal):', updateError);
+          debugInfo.stale_cleanup.error = updateError.message;
+        } else {
+          deactivated = updateData?.length || 0;
+          debugInfo.stale_cleanup.deactivated = deactivated;
+          const protectedCount = staleListings.length - staleToDeactivate.length;
+          console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive (${protectedCount} protected because in current active set)`);
+        }
       } else {
-        deactivated = updateData?.length || 0;
-        debugInfo.stale_cleanup.deactivated = deactivated;
-        console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive`);
+        console.log(`✅ Stale cleanup: No stale listings to deactivate (all protected by active set)`);
       }
-    } else {
-      // RPC function returned the count
-      deactivated = staleCleanupResult || 0;
-      debugInfo.stale_cleanup.deactivated = deactivated;
-      console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive`);
     }
 
     const duration = Date.now() - startTime;
