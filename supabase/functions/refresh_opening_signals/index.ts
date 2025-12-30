@@ -76,6 +76,19 @@ function sanitizeRoleTitle(input: string, term?: string): string {
 }
 
 /**
+ * Validates that an apply_url is a real, valid URL
+ * Rejects null, empty, or URLs containing 🔒
+ * Only accepts URLs that match ^https?:// pattern
+ */
+function isValidApplyUrl(u: string | null): boolean {
+  if (!u) return false;
+  const s = u.trim();
+  if (!/^https?:\/\//i.test(s)) return false;
+  if (s.includes("🔒")) return false;
+  return true;
+}
+
+/**
  * Computes SHA-256 hash of a string
  */
 async function sha256(message: string): Promise<string> {
@@ -186,16 +199,38 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
             // IMPORTANT: never send null company_name to DB
             const companyName = company ?? currentCompany ?? "Unknown";
             
+            // Validate and clean apply_url
+            const rawApplyUrl = item.apply_url || item.url || null;
+            let applyUrl: string | null = null;
+            if (rawApplyUrl) {
+              const trimmed = String(rawApplyUrl).trim();
+              // If it's 🔒 or empty, set to null
+              if (trimmed === '🔒' || !trimmed) {
+                applyUrl = null;
+              } else if (isValidApplyUrl(trimmed)) {
+                applyUrl = trimmed;
+              } else {
+                // Invalid URL - set to null
+                applyUrl = null;
+              }
+            }
+            
             return {
               company_name: companyName,
               role_title: sanitizeRoleTitle(item.role || item.role_title || '', term),
               location: item.location || null,
-              apply_url: item.apply_url || item.url || null,
+              apply_url: applyUrl,
               age_days: ageDays,
               posted_at: postedAt,
               original_index: index // Preserve array order for fill-down
             };
-          }).filter((r: ParsedRow) => r.company_name && r.role_title);
+          }).filter((r: ParsedRow) => {
+            // For active roles, require valid apply_url
+            // For inactive roles, allow null apply_url
+            if (!r.company_name || !r.role_title) return false;
+            // Note: We don't have allowNullApplyUrl context here, so we'll filter later if needed
+            return true;
+          });
         }
       } catch (e) {
         console.log(`Failed to parse JSON from ${url}: ${e}`);
@@ -254,11 +289,27 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
             // IMPORTANT: never send null company_name to DB
             const companyName = company ?? currentCompany ?? "Unknown";
             
+            // Parse and validate apply_url
+            const rawApplyUrl = urlIdx >= 0 ? (cols[urlIdx] || null) : null;
+            let applyUrl: string | null = null;
+            if (rawApplyUrl) {
+              const trimmed = String(rawApplyUrl).trim();
+              // If it's 🔒 or empty, set to null
+              if (trimmed === '🔒' || !trimmed) {
+                applyUrl = null;
+              } else if (isValidApplyUrl(trimmed)) {
+                applyUrl = trimmed;
+              } else {
+                // Invalid URL - set to null
+                applyUrl = null;
+              }
+            }
+            
             return {
               company_name: companyName,
               role_title: sanitizeRoleTitle(cols[roleIdx] || '', term),
               location: locationIdx >= 0 ? (cols[locationIdx] || null) : null,
-              apply_url: urlIdx >= 0 ? (cols[urlIdx] || null) : null,
+              apply_url: applyUrl,
               age_days: ageDays,
               posted_at: postedAt
             };
@@ -416,12 +467,29 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
           applyUrl = applyLinkMatch[1];
         } else {
           const cellContent = cells[applyIdx] || '';
-          // For inactive roles, if it's just "🔒" or empty, set to null
-          if (allowNullApplyUrl && (cellContent.trim() === '🔒' || !cellContent.trim())) {
+          const trimmed = cellContent.trim();
+          
+          // If cell is 🔒 or empty, set to null
+          if (trimmed === '🔒' || !trimmed) {
             applyUrl = null;
           } else {
-            applyUrl = cellContent.trim() || null;
+            applyUrl = trimmed;
           }
+        }
+      }
+      
+      // For active tables: skip rows with null/invalid apply_url
+      // For inactive tables: allow null apply_url
+      if (!allowNullApplyUrl) {
+        // Active jobs must have a valid apply URL
+        if (!applyUrl || !isValidApplyUrl(applyUrl)) {
+          skipped++;
+          continue;
+        }
+      } else {
+        // Inactive roles: if apply_url is invalid, set to null (but don't skip the row)
+        if (applyUrl && !isValidApplyUrl(applyUrl)) {
+          applyUrl = null;
         }
       }
       
@@ -433,21 +501,6 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       if (!companyName || !roleTitleClean) {
         skipped++;
         continue;
-      }
-      
-      if (!allowNullApplyUrl && !applyUrl) {
-        skipped++;
-        continue;
-      }
-      
-      // Validate URL format if present
-      if (applyUrl && !applyUrl.match(/^https?:\/\//i)) {
-        // Try to fix relative URLs
-        if (applyUrl.startsWith('/')) {
-          applyUrl = 'https://' + applyUrl.substring(1);
-        } else if (!applyUrl.includes('://')) {
-          applyUrl = 'https://' + applyUrl;
-        }
       }
       
       // Parse Age column if present
@@ -637,7 +690,8 @@ function verifyCompanyUrlAlignment(
   
   // Track all apply_url → company_name mappings AND preserve order
   for (const row of rows) {
-    if (!row.apply_url) continue; // Skip rows without apply_url
+    // Skip rows without apply_url or with invalid apply_url (🔒, non-https, etc.)
+    if (!row.apply_url || !isValidApplyUrl(row.apply_url)) continue;
     
     const url = (row.apply_url || '').trim();
     const company = (row.company_name || '').trim();
@@ -754,7 +808,8 @@ function deduplicateByApplyUrl(rows: ParsedRow[]): ParsedRow[] {
   const unique: ParsedRow[] = [];
 
   for (const row of rows) {
-    if (!row.apply_url) continue;
+    // Skip rows without apply_url or with invalid apply_url (🔒, non-https, etc.)
+    if (!row.apply_url || !isValidApplyUrl(row.apply_url)) continue;
     const url = row.apply_url.toLowerCase().trim();
     if (!seen.has(url)) {
       seen.set(url, true);
@@ -805,6 +860,10 @@ serve(async (req) => {
       console.log(`Trying structured source: ${altUrl}`);
       let structuredRows = await tryParseStructuredSource(altUrl, TERM);
       if (structuredRows && structuredRows.length > 0) {
+        // Filter out rows with invalid apply_url (structured sources are always for active roles)
+        structuredRows = structuredRows.filter(r => r.apply_url && isValidApplyUrl(r.apply_url));
+        console.log(`📊 Filtered to ${structuredRows.length} rows with valid apply_url`);
+        
         // Fill-down company names based on original_index (array/CSV line order)
         console.log('🔄 Filling down company names based on original order...');
         structuredRows = fillDownCompanyNames(structuredRows);
@@ -1109,9 +1168,15 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const term = TERM;
     
+    // Final safety check: filter out any rows with invalid apply_url (shouldn't happen, but extra safety)
+    const validRows = parsedRows.filter(row => !row.apply_url || isValidApplyUrl(row.apply_url));
+    if (validRows.length !== parsedRows.length) {
+      console.warn(`⚠️ Filtered out ${parsedRows.length - validRows.length} rows with invalid apply_url before upsert`);
+    }
+    
     // Compute listing_hash for each row and prepare records
     const activeRecords = await Promise.all(
-      parsedRows.map(async (row) => {
+      validRows.map(async (row) => {
         // Final sanitization pass (role_title already sanitized during parsing, but ensure term is removed)
         const finalRoleTitle = sanitizeRoleTitle(row.role_title, term);
         
@@ -1298,12 +1363,14 @@ serve(async (req) => {
       };
     } else if (dbConflicts && Array.isArray(dbConflicts)) {
       // Group by apply_url and check for multiple company_names
+      // Skip invalid URLs (🔒, non-https, etc.)
       const urlToCompanies = new Map<string, Set<string>>();
       for (const row of dbConflicts) {
         if (!row || !row.apply_url) continue;
         const url = (row.apply_url || '').trim();
+        // Skip invalid URLs (🔒, non-https, etc.)
+        if (!url || !isValidApplyUrl(url)) continue;
         const company = (row.company_name || '').trim();
-        if (!url) continue;
         if (!urlToCompanies.has(url)) {
           urlToCompanies.set(url, new Set());
         }
@@ -1381,7 +1448,8 @@ serve(async (req) => {
         for (const row of dbConflicts) {
           if (!row || !row.apply_url) continue;
           const url = (row.apply_url || '').trim();
-          if (url) {
+          // Skip invalid URLs (🔒, non-https, etc.)
+          if (url && isValidApplyUrl(url)) {
             urlCounts.set(url, (urlCounts.get(url) || 0) + 1);
           }
         }
