@@ -15,6 +15,7 @@ interface Listing {
   applyUrl: string;
   lastSeenAt: string;
   firstSeenAt: string;
+  postedAt: string | null;
 }
 
 type TimeTab = "new" | "today" | "last2days" | "last7days" | "all";
@@ -85,18 +86,11 @@ export default function ListingsTab() {
         return;
       }
 
+      // If data exists, set the timestamp (null means "everything is new")
+      // We do NOT auto-initialize for new users - they see everything as New until they click "Mark all as seen"
       if (data) {
-        // If last_seen_listings_at is null, initialize it to now (new user)
-        if (!data.last_seen_listings_at) {
-          const now = new Date().toISOString();
-          await supabase
-            .from('user_preferences')
-            .update({ last_seen_listings_at: now })
-            .eq('user_id', user.id);
-          setLastSeenListingsAt(now);
-        } else {
-          setLastSeenListingsAt(data.last_seen_listings_at);
-        }
+        setLastSeenListingsAt(data.last_seen_listings_at);
+        console.log('[New Logic] User last_seen_listings_at:', data.last_seen_listings_at);
       }
     }
 
@@ -127,7 +121,8 @@ export default function ListingsTab() {
           .from('opening_signals')
           .select('id, company_name, role_title, location, term, apply_url, posted_at, first_seen_at, last_seen_at, is_active')
           .eq('is_active', true)
-          .order('first_seen_at', { ascending: false })
+          .order('posted_at', { ascending: false, nullsFirst: false })
+          .order('last_seen_at', { ascending: false })
           .limit(500) as { data: OpeningSignal[] | null; error: any };
 
         if (fetchError) {
@@ -143,8 +138,11 @@ export default function ListingsTab() {
           term: signal.term || '',
           applyUrl: signal.apply_url || '',
           lastSeenAt: signal.last_seen_at || '',
-          firstSeenAt: signal.first_seen_at || ''
+          firstSeenAt: signal.first_seen_at || '',
+          postedAt: signal.posted_at
         }));
+        
+        console.log('[Listings] Fetched', mappedListings.length, 'listings');
 
         setListings(mappedListings);
       } catch (err) {
@@ -178,12 +176,17 @@ export default function ListingsTab() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     return countryFilteredListings.filter(listing => {
+      // Use posted_at for New logic, fallback to firstSeenAt for time-based tabs
+      const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
       const firstSeen = new Date(listing.firstSeenAt);
 
       switch (activeTab) {
         case "new":
-          if (!lastSeenListingsAt) return false;
-          return firstSeen > new Date(lastSeenListingsAt);
+          // If user has no last_seen_listings_at, everything is "New"
+          if (!lastSeenListingsAt) return true;
+          // Use posted_at for New determination
+          if (!postedAt) return false;
+          return postedAt > new Date(lastSeenListingsAt);
         case "today":
           return firstSeen >= startOfToday;
         case "last2days":
@@ -224,15 +227,22 @@ export default function ListingsTab() {
     let last7DaysCount = 0;
 
     countryFilteredListings.forEach(listing => {
+      const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
       const firstSeen = new Date(listing.firstSeenAt);
 
-      if (lastSeenListingsAt && firstSeen > new Date(lastSeenListingsAt)) {
+      // New count: use posted_at, if null last_seen_listings_at then everything is new
+      if (!lastSeenListingsAt) {
+        newCount++;
+      } else if (postedAt && postedAt > new Date(lastSeenListingsAt)) {
         newCount++;
       }
+      
       if (firstSeen >= startOfToday) todayCount++;
       if (firstSeen >= twoDaysAgo) last2DaysCount++;
       if (firstSeen >= sevenDaysAgo) last7DaysCount++;
     });
+    
+    console.log('[New Logic] New count:', newCount, '| last_seen_listings_at:', lastSeenListingsAt);
 
     return {
       new: newCount,
@@ -258,27 +268,37 @@ export default function ListingsTab() {
   };
 
   const handleMarkAllAsSeen = async () => {
-    if (!userId) return;
+    if (!userId) {
+      console.error('[Mark as Seen] No user ID');
+      return;
+    }
 
     const now = new Date().toISOString();
+    console.log('[Mark as Seen] Setting last_seen_listings_at to:', now);
+    
     const { error } = await supabase
       .from('user_preferences')
       .update({ last_seen_listings_at: now })
       .eq('user_id', userId);
 
     if (error) {
-      console.error('Error updating last_seen_listings_at:', error);
+      console.error('[Mark as Seen] Error updating last_seen_listings_at:', error);
       toast.error('Failed to mark as seen');
       return;
     }
 
+    // Update local state immediately - this will recompute newCount to 0
     setLastSeenListingsAt(now);
+    console.log('[Mark as Seen] Success! New count should now be 0');
     toast.success('All listings marked as seen');
   };
 
   const isNewListing = (listing: Listing) => {
-    if (!lastSeenListingsAt) return false;
-    return new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
+    // If user has no last_seen_listings_at, everything is "New"
+    if (!lastSeenListingsAt) return true;
+    // Use posted_at for New determination
+    if (!listing.postedAt) return false;
+    return new Date(listing.postedAt) > new Date(lastSeenListingsAt);
   };
 
   const tabs: { id: TimeTab; label: string; count: number }[] = [
