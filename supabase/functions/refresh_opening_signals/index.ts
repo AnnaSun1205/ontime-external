@@ -615,23 +615,37 @@ function fillDownCompanyNames(rows: ParsedRow[]): ParsedRow[] {
 /**
  * Verification: Check that each apply_url maps to exactly one company_name
  * This ensures data integrity after fill-down and before deduplication.
+ * Also logs company-URL pairs in original order for manual verification.
  * 
  * @param rows Parsed rows after fill-down
  * @param source Source identifier for logging
- * @returns Object with isValid flag and conflicts array
+ * @returns Object with isValid flag, conflicts array, and sample pairs
  */
 function verifyCompanyUrlAlignment(
   rows: ParsedRow[],
   source: string = 'unknown'
-): { isValid: boolean; conflicts: Array<{ apply_url: string; companies: string[] }> } {
+): { 
+  isValid: boolean; 
+  conflicts: Array<{ apply_url: string; companies: string[] }>;
+  samplePairs: Array<{ company_name: string; apply_url: string; original_index?: number }>;
+  totalPairs: number;
+} {
   const urlToCompanies = new Map<string, Set<string>>();
+  const pairs: Array<{ company_name: string; apply_url: string; original_index?: number }> = [];
   
-  // Track all apply_url → company_name mappings
+  // Track all apply_url → company_name mappings AND preserve order
   for (const row of rows) {
     if (!row.apply_url) continue; // Skip rows without apply_url
     
     const url = row.apply_url.trim();
     const company = row.company_name.trim();
+    
+    // Store pair in original order
+    pairs.push({
+      company_name: company,
+      apply_url: url,
+      original_index: row.original_index
+    });
     
     if (!urlToCompanies.has(url)) {
       urlToCompanies.set(url, new Set());
@@ -650,9 +664,33 @@ function verifyCompanyUrlAlignment(
     }
   }
   
+  // Sort pairs by original_index to preserve DOM order for verification
+  const sortedPairs = [...pairs].sort((a, b) => {
+    const idxA = a.original_index ?? 0;
+    const idxB = b.original_index ?? 0;
+    return idxA - idxB;
+  });
+  
+  // Log sample of company-URL pairs in original order for manual verification
+  const sampleSize = Math.min(20, sortedPairs.length);
+  const samplePairs = sortedPairs.slice(0, sampleSize);
+  
+  if (samplePairs.length > 0) {
+    console.log(`📋 Sample company-URL pairs (first ${sampleSize} in original order):`);
+    for (let i = 0; i < Math.min(10, samplePairs.length); i++) {
+      const pair = samplePairs[i];
+      console.log(`   ${i + 1}. ${pair.company_name} → ${pair.apply_url.substring(0, 60)}${pair.apply_url.length > 60 ? '...' : ''}`);
+    }
+    if (samplePairs.length > 10) {
+      console.log(`   ... and ${samplePairs.length - 10} more pairs`);
+    }
+  }
+  
   return {
     isValid: conflicts.length === 0,
-    conflicts
+    conflicts,
+    samplePairs: samplePairs.slice(0, 20), // Include up to 20 in return value
+    totalPairs: pairs.length
   };
 }
 
@@ -906,10 +944,13 @@ serve(async (req) => {
         );
       } else {
         console.log(`✅ Verification passed: All apply_urls map to exactly one company_name`);
+        console.log(`📊 Total company-URL pairs: ${verification.totalPairs}`);
         debugInfo.verification = {
           company_url_alignment: {
             isValid: true,
-            conflict_count: 0
+            conflict_count: 0,
+            total_pairs: verification.totalPairs,
+            sample_pairs: verification.samplePairs // Include sample for manual verification
           }
         };
       }
@@ -947,11 +988,14 @@ serve(async (req) => {
         );
       } else {
         console.log(`✅ Post-dedup verification passed: All apply_urls in upsert set map to exactly one company_name`);
+        console.log(`📊 Total company-URL pairs in upsert set: ${postDedupVerification.totalPairs}`);
         debugInfo.verification = {
           ...debugInfo.verification,
           post_dedup: {
             isValid: true,
-            conflict_count: 0
+            conflict_count: 0,
+            total_pairs: postDedupVerification.totalPairs,
+            sample_pairs: postDedupVerification.samplePairs // Include sample for manual verification
           }
         };
       }
