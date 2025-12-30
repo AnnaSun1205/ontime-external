@@ -1946,7 +1946,7 @@ serve(async (req) => {
         error: error instanceof Error ? error.message : 'Unknown error',
         inserted: 0,
         updated: 0,
-        deactivated: debugInfo.deactivation?.deactivated_count || 0,
+        deactivated: debugInfo.stale_cleanup.deactivated || 0,
         debug: debugInfo
       }),
       { 
