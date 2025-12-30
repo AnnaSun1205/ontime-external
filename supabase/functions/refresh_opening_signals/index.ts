@@ -895,7 +895,7 @@ serve(async (req) => {
     source_fetch: { status: 'pending', url: GITHUB_URL },
     parsing: { method: 'html', tables_found: 0, rows_parsed: 0, errors: [], skipped: 0 },
     upsert: { inserted: 0, updated: 0, total: 0, errors: [] },
-    stale_cleanup: { deactivated: 0 }
+    deactivation: { deactivated_count: 0, total_checked: 0, not_in_active_set: 0 }
   };
   
   try {
@@ -1651,8 +1651,91 @@ serve(async (req) => {
       console.log(`✅ Set is_active=false for ${inactiveUpdated} rows in inactive_set`);
     }
     
-    // Rows not seen in this run will be handled by stale cleanup (marked inactive if last_seen_at < 48h)
-    // This is already handled in the stale cleanup step below
+    // Step 2: Deactivate rows that are currently active but NOT in today's active set
+    // This replaces stale cleanup - is_active is based solely on whether job appears in Active roles tables
+    console.log('🔄 Deactivating rows that are not in today\'s active set...');
+    
+    let deactivated = 0; // Declare at function scope for response
+    
+    // Get all rows that are currently active
+    const { data: currentlyActiveRows, error: activeFetchError } = await supabase
+      .from('opening_signals')
+      .select('id, apply_url')
+      .eq('is_active', true)
+      .not('apply_url', 'is', null);
+    
+    if (activeFetchError) {
+      console.warn('⚠️ Error fetching currently active rows:', activeFetchError.message);
+      debugInfo.deactivation = { error: activeFetchError.message };
+    } else if (currentlyActiveRows && Array.isArray(currentlyActiveRows)) {
+      // Find rows that are active but NOT in today's active_set
+      const rowsToDeactivate: string[] = [];
+      
+      for (const row of currentlyActiveRows) {
+        if (!row.apply_url || !isValidApplyUrl(row.apply_url)) continue;
+        const normalizedUrl = row.apply_url.toLowerCase().trim();
+        
+        // If URL is NOT in active_set, mark for deactivation
+        if (!active_set.has(normalizedUrl)) {
+          rowsToDeactivate.push(row.id);
+        }
+      }
+      
+      if (rowsToDeactivate.length > 0) {
+        // Build update object - set is_active=false, and deactivated_at if column exists
+        const updateData: { is_active: boolean; deactivated_at?: string } = {
+          is_active: false
+        };
+        
+        // Try to set deactivated_at if column exists (will fail silently if column doesn't exist)
+        updateData.deactivated_at = new Date().toISOString();
+        
+        // Process in batches to avoid ID length limits
+        const batchSize = 500;
+        
+        for (let i = 0; i < rowsToDeactivate.length; i += batchSize) {
+          const batch = rowsToDeactivate.slice(i, i + batchSize);
+          const { error: deactivateError } = await supabase
+            .from('opening_signals')
+            .update(updateData)
+            .in('id', batch);
+          
+          if (deactivateError) {
+            // If deactivated_at column doesn't exist, try without it
+            if (deactivateError.message.includes('deactivated_at')) {
+              const { error: retryError } = await supabase
+                .from('opening_signals')
+                .update({ is_active: false })
+                .in('id', batch);
+              
+              if (retryError) {
+                console.warn(`⚠️ Error deactivating rows (batch ${i / batchSize + 1}):`, retryError.message);
+              } else {
+                deactivated += batch.length;
+              }
+            } else {
+              console.warn(`⚠️ Error deactivating rows (batch ${i / batchSize + 1}):`, deactivateError.message);
+            }
+          } else {
+            deactivated += batch.length;
+          }
+        }
+        
+        console.log(`✅ Deactivated ${deactivated} rows that were not in today's active set`);
+        debugInfo.deactivation = {
+          deactivated_count: deactivated,
+          total_checked: currentlyActiveRows.length,
+          not_in_active_set: rowsToDeactivate.length
+        };
+      } else {
+        console.log(`✅ All currently active rows are in today's active set (no deactivations needed)`);
+        debugInfo.deactivation = {
+          deactivated_count: 0,
+          total_checked: currentlyActiveRows.length,
+          not_in_active_set: 0
+        };
+      }
+    }
     
     // VERIFICATION: Ensure no apply_url with is_active=true exists if it was only in inactive section
     console.log('🔍 Verifying is_active assignment: checking for active URLs that should be inactive...');
@@ -1831,53 +1914,8 @@ serve(async (req) => {
       }
     }
     
-    // Step 2: Stale cleanup AFTER upsert - mark listings inactive if not seen in 48 hours
-    // BUT: Don't mark inactive if they're in our current ACTIVE_URLS set
-    // This ensures we don't override is_active for rows that are in Simplify's active section
-    console.log('🧹 Running stale cleanup (marking listings inactive if last_seen_at < 48 hours AND not in current active set)...');
-    let deactivated = 0;
-    
-    // Get stale listings (not seen in 48 hours)
-    const staleThreshold = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: staleListings, error: staleFetchError } = await supabase
-      .from('opening_signals')
-      .select('id, apply_url, is_active')
-      .eq('is_active', true)
-      .lt('last_seen_at', staleThreshold);
-    
-    if (staleFetchError) {
-      console.warn('⚠️ Stale cleanup fetch error (non-fatal):', staleFetchError);
-      debugInfo.stale_cleanup.error = staleFetchError.message;
-    } else if (staleListings && Array.isArray(staleListings)) {
-      // Filter out URLs that are in current active set
-      const staleToDeactivate = staleListings.filter(row => {
-        if (!row.apply_url || !isValidApplyUrl(row.apply_url)) return true; // Deactivate if no valid URL
-        const normalizedUrl = row.apply_url.toLowerCase().trim();
-        // Don't deactivate if URL is in current active set
-        return !ACTIVE_URLS_FOR_IS_ACTIVE.has(normalizedUrl);
-      });
-      
-      if (staleToDeactivate.length > 0) {
-        const staleIds = staleToDeactivate.map(r => r.id);
-        const { data: updateData, error: updateError } = await supabase
-          .from('opening_signals')
-          .update({ is_active: false })
-          .in('id', staleIds)
-          .select('id');
-        
-        if (updateError) {
-          console.warn('⚠️ Stale cleanup update error (non-fatal):', updateError);
-          debugInfo.stale_cleanup.error = updateError.message;
-        } else {
-          deactivated = updateData?.length || 0;
-          debugInfo.stale_cleanup.deactivated = deactivated;
-          const protectedCount = staleListings.length - staleToDeactivate.length;
-          console.log(`✅ Stale cleanup: ${deactivated} listings marked as inactive (${protectedCount} protected because in current active set)`);
-        }
-      } else {
-        console.log(`✅ Stale cleanup: No stale listings to deactivate (all protected by active set)`);
-      }
-    }
+    // Note: Stale cleanup based on last_seen_at has been replaced with explicit deactivation
+    // based on whether apply_url appears in today's Active roles tables
 
     const duration = Date.now() - startTime;
     debugInfo.duration_ms = duration;
