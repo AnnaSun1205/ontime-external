@@ -829,10 +829,13 @@ serve(async (req) => {
           );
         } else {
           console.log(`✅ Verification passed: All apply_urls map to exactly one company_name`);
+          console.log(`📊 Total company-URL pairs: ${verification.totalPairs}`);
           debugInfo.verification = {
             company_url_alignment: {
               isValid: true,
-              conflict_count: 0
+              conflict_count: 0,
+              total_pairs: verification.totalPairs,
+              sample_pairs: verification.samplePairs
             }
           };
         }
@@ -1257,11 +1260,29 @@ serve(async (req) => {
         console.warn('⚠️ WARNING: Database contains apply_url → company_name conflicts. This may indicate a previous ingestion issue.');
       } else {
         console.log(`✅ Database verification passed: All apply_urls map to exactly one company_name`);
+        
+        // Log sample of database company-URL pairs for verification
+        const dbSampleSize = Math.min(10, dbConflicts.length);
+        if (dbSampleSize > 0) {
+          console.log(`📋 Sample database company-URL pairs (first ${dbSampleSize}):`);
+          for (let i = 0; i < dbSampleSize; i++) {
+            const row = dbConflicts[i];
+            if (row.apply_url && row.company_name) {
+              console.log(`   ${i + 1}. ${row.company_name} → ${row.apply_url.substring(0, 60)}${row.apply_url.length > 60 ? '...' : ''}`);
+            }
+          }
+        }
+        
         debugInfo.verification = {
           ...debugInfo.verification,
           database_check: {
             isValid: true,
-            conflict_count: 0
+            conflict_count: 0,
+            total_pairs: dbConflicts.length,
+            sample_pairs: dbConflicts.slice(0, 20).map(r => ({
+              company_name: r.company_name || '',
+              apply_url: r.apply_url || ''
+            }))
           }
         };
       }
