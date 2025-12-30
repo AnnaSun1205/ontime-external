@@ -713,11 +713,17 @@ serve(async (req) => {
     let parsedRows: ParsedRow[] | null = null;
     for (const altUrl of ALTERNATIVE_SOURCES) {
       console.log(`Trying structured source: ${altUrl}`);
-      parsedRows = await tryParseStructuredSource(altUrl, TERM);
-      if (parsedRows && parsedRows.length > 0) {
+      let structuredRows = await tryParseStructuredSource(altUrl, TERM);
+      if (structuredRows && structuredRows.length > 0) {
+        // Fill-down company names based on original_index (array/CSV line order)
+        console.log('🔄 Filling down company names based on original order...');
+        structuredRows = fillDownCompanyNames(structuredRows);
+        console.log(`✅ Filled down company names for ${structuredRows.length} rows`);
+        
         debugInfo.parsing.method = 'structured';
         debugInfo.source_fetch.url = altUrl;
-        console.log(`✅ Found structured source with ${parsedRows.length} rows`);
+        console.log(`✅ Found structured source with ${structuredRows.length} rows`);
+        parsedRows = structuredRows;
         break;
       }
     }
