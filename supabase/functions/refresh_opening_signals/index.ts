@@ -18,7 +18,8 @@ interface ParsedRow {
   location: string | null;
   apply_url: string | null;
   age_days: number | null;
-  posted_at: string | null;
+  posted_at: string | null; // system_first_seen_at (when we first discovered it)
+  source_first_seen_at: string | null; // When Simplify says it was posted (from age string)
   original_index?: number; // Preserve DOM order for fill-down
 }
 
@@ -73,6 +74,38 @@ function sanitizeRoleTitle(input: string, term?: string): string {
   s = s.replace(/\s*&\s*$/, "");
 
   return s;
+}
+
+/**
+ * Parses Simplify age format (e.g., "1mo", "3d", "2w", "4h") and converts to milliseconds
+ * Returns null if age string is invalid or cannot be parsed
+ */
+function parseSimplifyAge(ageStr: string): number | null {
+  if (!ageStr) return null;
+  const s = ageStr.trim().toLowerCase();
+  
+  // Match patterns like "1mo", "3d", "2w", "4h", "5mo", etc.
+  const match = s.match(/^(\d+)(mo|w|d|h)$/);
+  if (!match) return null;
+  
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  
+  if (isNaN(value) || value < 0) return null;
+  
+  // Convert to milliseconds
+  switch (unit) {
+    case 'h':  // hours
+      return value * 60 * 60 * 1000;
+    case 'd':  // days
+      return value * 24 * 60 * 60 * 1000;
+    case 'w':  // weeks
+      return value * 7 * 24 * 60 * 60 * 1000;
+    case 'mo': // months (approximate: 30 days)
+      return value * 30 * 24 * 60 * 60 * 1000;
+    default:
+      return null;
+  }
 }
 
 /**
@@ -160,23 +193,33 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
           return data.map((item: any, index: number) => {
             // Parse age if available in JSON
             let ageDays: number | null = null;
-            let postedAt: string | null = null;
+            let sourceFirstSeenAt: string | null = null;
+            const postedAt = new Date().toISOString(); // system_first_seen_at (when we discovered it)
             
             if (item.age || item.age_days) {
               const ageValue = item.age || item.age_days;
-              if (typeof ageValue === 'number') {
-                ageDays = ageValue;
-                const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
-                postedAt = postedDate.toISOString();
-              } else if (typeof ageValue === 'string') {
-                const ageMatch = ageValue.match(/^(\d+)d?$/i);
-                if (ageMatch) {
-                  ageDays = parseInt(ageMatch[1], 10);
-                  if (!isNaN(ageDays)) {
-                    const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
-                    postedAt = postedDate.toISOString();
+              if (typeof ageValue === 'string') {
+                // Try Simplify age format (1mo, 3d, 2w, 4h)
+                const ageMs = parseSimplifyAge(ageValue);
+                if (ageMs !== null) {
+                  const now = Date.now();
+                  sourceFirstSeenAt = new Date(now - ageMs).toISOString();
+                  ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+                } else {
+                  // Fallback: Try legacy "Xd" format
+                  const ageMatch = ageValue.match(/^(\d+)d?$/i);
+                  if (ageMatch) {
+                    ageDays = parseInt(ageMatch[1], 10);
+                    if (!isNaN(ageDays)) {
+                      const now = Date.now();
+                      sourceFirstSeenAt = new Date(now - ageDays * 24 * 60 * 60 * 1000).toISOString();
+                    }
                   }
                 }
+              } else if (typeof ageValue === 'number') {
+                ageDays = ageValue;
+                const now = Date.now();
+                sourceFirstSeenAt = new Date(now - ageDays * 24 * 60 * 60 * 1000).toISOString();
               }
             }
             
@@ -184,7 +227,7 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               try {
                 const parsedDate = new Date(item.posted_at || item.posted_date);
                 if (!isNaN(parsedDate.getTime())) {
-                  postedAt = parsedDate.toISOString();
+                  sourceFirstSeenAt = parsedDate.toISOString();
                   const now = new Date();
                   const diffTime = now.getTime() - parsedDate.getTime();
                   ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -192,6 +235,18 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               } catch (e) {
                 // Ignore date parsing errors
               }
+            }
+            
+            // If source_first_seen_at is missing, fallback to posted_at
+            if (sourceFirstSeenAt === null && ageDays === null) {
+              ageDays = 0;
+              sourceFirstSeenAt = postedAt;
+            } else if (sourceFirstSeenAt !== null && ageDays === null) {
+              // Calculate age_days from source_first_seen_at
+              const now = new Date();
+              const sourceDate = new Date(sourceFirstSeenAt);
+              const diffTime = now.getTime() - sourceDate.getTime();
+              ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             }
             
             // Handle company name carry-forward
@@ -222,7 +277,8 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               location: item.location || null,
               apply_url: applyUrl,
               age_days: ageDays,
-              posted_at: postedAt,
+              posted_at: postedAt, // system_first_seen_at
+              source_first_seen_at: sourceFirstSeenAt,
               original_index: index // Preserve array order for fill-down
             };
           }).filter((r: ParsedRow) => {
@@ -259,17 +315,40 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
             
             // Parse age if available in CSV
             let ageDays: number | null = null;
-            let postedAt: string | null = null;
+            let sourceFirstSeenAt: string | null = null;
+            const postedAt = new Date().toISOString(); // system_first_seen_at (when we discovered it)
+            
             if (ageIdx >= 0 && cols[ageIdx]) {
               const ageCell = cols[ageIdx].trim();
-              const ageMatch = ageCell.match(/^(\d+)d?$/i);
-              if (ageMatch) {
-                ageDays = parseInt(ageMatch[1], 10);
-                if (!isNaN(ageDays)) {
-                  const postedDate = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
-                  postedAt = postedDate.toISOString();
+              // Try Simplify age format (1mo, 3d, 2w, 4h)
+              const ageMs = parseSimplifyAge(ageCell);
+              if (ageMs !== null) {
+                const now = Date.now();
+                sourceFirstSeenAt = new Date(now - ageMs).toISOString();
+                ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+              } else {
+                // Fallback: Try legacy "Xd" format
+                const ageMatch = ageCell.match(/^(\d+)d?$/i);
+                if (ageMatch) {
+                  ageDays = parseInt(ageMatch[1], 10);
+                  if (!isNaN(ageDays)) {
+                    const now = Date.now();
+                    sourceFirstSeenAt = new Date(now - ageDays * 24 * 60 * 60 * 1000).toISOString();
+                  }
                 }
               }
+            }
+            
+            // If source_first_seen_at is missing, fallback to posted_at
+            if (sourceFirstSeenAt === null && ageDays === null) {
+              ageDays = 0;
+              sourceFirstSeenAt = postedAt;
+            } else if (sourceFirstSeenAt !== null && ageDays === null) {
+              // Calculate age_days from source_first_seen_at
+              const now = new Date();
+              const sourceDate = new Date(sourceFirstSeenAt);
+              const diffTime = now.getTime() - sourceDate.getTime();
+              ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             }
             
             // Handle company name carry-forward
@@ -300,7 +379,8 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               location: locationIdx >= 0 ? (cols[locationIdx] || null) : null,
               apply_url: applyUrl,
               age_days: ageDays,
-              posted_at: postedAt
+              posted_at: postedAt, // system_first_seen_at
+              source_first_seen_at: sourceFirstSeenAt
             };
           }).filter(r => r.company_name && r.role_title);
         }
@@ -486,17 +566,18 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       
       // Parse Age column if present
       let ageDays: number | null = null;
-      let postedAt: string | null = null;
+      let postedAt: string | null = null; // system_first_seen_at (when we first discovered it)
+      let sourceFirstSeenAt: string | null = null; // When Simplify says it was posted (from age string)
       
       // Try to find Age column - check detected column or try all columns
       let ageColumnIdx: number | undefined = columnOrder.age;
       
-      // If not detected in header, try to find it by looking for "Xd" pattern in cells
+      // If not detected in header, try to find it by looking for age patterns in cells
       if (ageColumnIdx === undefined) {
         for (let i = 0; i < cells.length; i++) {
           const cell = cells[i]?.trim() || '';
-          // Check if cell looks like age (e.g., "0d", "3d", "5d")
-          if (cell.match(/^\d+d?$/i)) {
+          // Check if cell looks like age (e.g., "0d", "3d", "5d", "1mo", "2w", "4h")
+          if (cell.match(/^\d+(mo|w|d|h)$/i) || cell.match(/^\d+d?$/i)) {
             ageColumnIdx = i;
             if (DEBUG) console.log(`[DEBUG] Found Age column at index ${i} by pattern matching: "${cell}"`);
             break;
@@ -509,61 +590,66 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         const ageCell = cells[ageColumnIdx]?.trim() || '';
         
         if (ageCell) {
-          // Parse age format like "0d", "3d", "1d", etc.
-          // Convert: age_days = parseInt(age.replace('d',''))
-          const ageValue = ageCell.replace(/d$/i, '').trim();
-          const parsedAge = parseInt(ageValue, 10);
-          
-          if (!isNaN(parsedAge) && parsedAge >= 0) {
-            ageDays = parsedAge;
-            // Calculate posted_at: now() - age_days * 24h
+          // Try to parse Simplify age format (1mo, 3d, 2w, 4h)
+          const ageMs = parseSimplifyAge(ageCell);
+          if (ageMs !== null) {
+            // Calculate source_first_seen_at from Simplify age
             const now = Date.now();
-            const postedDate = new Date(now - ageDays * 24 * 60 * 60 * 1000);
-            postedAt = postedDate.toISOString();
-            if (DEBUG) console.log(`[DEBUG] Parsed age: "${ageCell}" → ${ageDays} days, posted_at: ${postedAt}`);
+            sourceFirstSeenAt = new Date(now - ageMs).toISOString();
+            
+            // Calculate age_days from source_first_seen_at for UI display
+            ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+            
+            if (DEBUG) console.log(`[DEBUG] Parsed Simplify age: "${ageCell}" → ${ageDays} days, source_first_seen_at: ${sourceFirstSeenAt}`);
           } else {
-            // Try to parse as actual date if provided
-            try {
-              const parsedDate = new Date(ageCell);
-              if (!isNaN(parsedDate.getTime())) {
-                postedAt = parsedDate.toISOString();
-                // Calculate age_days from posted_at
-                const now = new Date();
-                const diffTime = now.getTime() - parsedDate.getTime();
-                ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                if (DEBUG) console.log(`[DEBUG] Parsed date: ${postedAt}, age_days: ${ageDays}`);
+            // Fallback: Try to parse as "Xd" format (legacy)
+            const ageValue = ageCell.replace(/d$/i, '').trim();
+            const parsedAge = parseInt(ageValue, 10);
+            
+            if (!isNaN(parsedAge) && parsedAge >= 0) {
+              ageDays = parsedAge;
+              // Calculate source_first_seen_at: now() - age_days * 24h
+              const now = Date.now();
+              sourceFirstSeenAt = new Date(now - ageDays * 24 * 60 * 60 * 1000).toISOString();
+              if (DEBUG) console.log(`[DEBUG] Parsed legacy age: "${ageCell}" → ${ageDays} days, source_first_seen_at: ${sourceFirstSeenAt}`);
+            } else {
+              // Try to parse as actual date if provided
+              try {
+                const parsedDate = new Date(ageCell);
+                if (!isNaN(parsedDate.getTime())) {
+                  sourceFirstSeenAt = parsedDate.toISOString();
+                  // Calculate age_days from source_first_seen_at
+                  const now = new Date();
+                  const diffTime = now.getTime() - parsedDate.getTime();
+                  ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                  if (DEBUG) console.log(`[DEBUG] Parsed date: ${sourceFirstSeenAt}, age_days: ${ageDays}`);
+                }
+              } catch (e) {
+                // Ignore date parsing errors
               }
-            } catch (e) {
-              // Ignore date parsing errors
             }
           }
         }
       }
       
-      // If age is missing or "0d", explicitly set age_days = 0 and posted_at = now()
-      // This ensures posted_at and age_days are always written together
-      if (ageDays === null && postedAt === null) {
+      // Set posted_at (system_first_seen_at) to now() - this is when we first discovered the job
+      postedAt = new Date().toISOString();
+      
+      // If source_first_seen_at is missing, fallback to posted_at for age_days calculation
+      if (sourceFirstSeenAt === null && ageDays === null) {
+        // No age info from Simplify, default to age_days = 0
         ageDays = 0;
-        postedAt = new Date().toISOString();
-        if (DEBUG) console.log(`[DEBUG] Age missing or empty, defaulting to age_days=0, posted_at=now()`);
+        sourceFirstSeenAt = postedAt; // Use system discovery time as fallback
+        if (DEBUG) console.log(`[DEBUG] Age missing or empty, defaulting to age_days=0, source_first_seen_at=posted_at`);
       }
       
-      // Ensure posted_at and age_days are always set together
-      // If posted_at is set but age_days is null, calculate age_days from posted_at
-      if (postedAt !== null && ageDays === null) {
+      // Ensure age_days is calculated from source_first_seen_at if present
+      if (sourceFirstSeenAt !== null && ageDays === null) {
         const now = new Date();
-        const postedDate = new Date(postedAt);
-        const diffTime = now.getTime() - postedDate.getTime();
+        const sourceDate = new Date(sourceFirstSeenAt);
+        const diffTime = now.getTime() - sourceDate.getTime();
         ageDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        if (DEBUG) console.log(`[DEBUG] Calculated age_days=${ageDays} from posted_at=${postedAt}`);
-      }
-      
-      // If age_days is set but posted_at is null, calculate posted_at from age_days
-      if (ageDays !== null && postedAt === null) {
-        const now = Date.now();
-        const postedDate = new Date(now - ageDays * 24 * 60 * 60 * 1000);
-        postedAt = postedDate.toISOString();
-        if (DEBUG) console.log(`[DEBUG] Calculated posted_at=${postedAt} from age_days=${ageDays}`);
+        if (DEBUG) console.log(`[DEBUG] Calculated age_days=${ageDays} from source_first_seen_at=${sourceFirstSeenAt}`);
       }
       
       rows.push({
@@ -572,7 +658,8 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         location: location,
         apply_url: applyUrl,
         age_days: ageDays,
-        posted_at: postedAt,
+        posted_at: postedAt, // system_first_seen_at
+        source_first_seen_at: sourceFirstSeenAt,
         original_index: rowIdx // Preserve DOM order for fill-down
       });
     } catch (error) {
@@ -1169,32 +1256,32 @@ serve(async (req) => {
           row.apply_url || ''
         );
         
-        // Ensure posted_at and age_days are always set together
-        // If posted_at exists, calculate age_days from it
-        // If age_days exists, calculate posted_at from it
-        // Otherwise default to age_days=0, posted_at=now()
-        let finalPostedAt: string | null = row.posted_at ?? null;
+        // Set posted_at (system_first_seen_at) - when we first discovered the job
+        const finalPostedAt: string = row.posted_at ?? new Date().toISOString();
+        
+        // Use source_first_seen_at if present (from Simplify age), else fallback to posted_at
+        let finalSourceFirstSeenAt: string | null = row.source_first_seen_at ?? null;
         let finalAgeDays: number | null = row.age_days ?? null;
         
-        // If posted_at is set but age_days is null, calculate age_days from posted_at
-        if (finalPostedAt !== null && finalAgeDays === null) {
+        // Calculate age_days from source_first_seen_at if present, else fallback to posted_at
+        if (finalSourceFirstSeenAt !== null) {
+          const now = new Date();
+          const sourceDate = new Date(finalSourceFirstSeenAt);
+          const diffTime = now.getTime() - sourceDate.getTime();
+          finalAgeDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+        } else if (finalAgeDays === null) {
+          // Fallback: calculate age_days from posted_at (system_first_seen_at)
           const now = new Date();
           const postedDate = new Date(finalPostedAt);
           const diffTime = now.getTime() - postedDate.getTime();
           finalAgeDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+          // Use posted_at as source_first_seen_at fallback
+          finalSourceFirstSeenAt = finalPostedAt;
         }
         
-        // If age_days is set but posted_at is null, calculate posted_at from age_days
-        if (finalAgeDays !== null && finalPostedAt === null) {
-          const now = Date.now();
-          const postedDate = new Date(now - finalAgeDays * 24 * 60 * 60 * 1000);
-          finalPostedAt = postedDate.toISOString();
-        }
-        
-        // If both are null, default to age_days=0, posted_at=now()
-        if (finalPostedAt === null && finalAgeDays === null) {
+        // Ensure age_days is never null
+        if (finalAgeDays === null) {
           finalAgeDays = 0;
-          finalPostedAt = new Date().toISOString();
         }
         
         return {
@@ -1208,86 +1295,77 @@ serve(async (req) => {
           last_seen_at: now,
           is_active: true,  // Always set to true for fetched listings
           listing_hash: listingHash,
-          // Always include both fields (never null)
-          posted_at: finalPostedAt!,
-          age_days: finalAgeDays!
+          posted_at: finalPostedAt, // system_first_seen_at
+          source_first_seen_at: finalSourceFirstSeenAt,
+          age_days: finalAgeDays
         };
       })
     );
 
     console.log('💾 Upserting active roles to opening_signals...');
     
-    // Fetch existing rows to preserve posted_at if it already exists
+    // Fetch existing rows to preserve posted_at and source_first_seen_at if they already exist
     const listingHashes = activeRecords.map(r => r.listing_hash);
     const { data: existingRows, error: fetchError } = await supabase
       .from('opening_signals')
-      .select('listing_hash, posted_at, age_days')
+      .select('listing_hash, posted_at, source_first_seen_at, age_days')
       .in('listing_hash', listingHashes);
     
     if (fetchError) {
-      console.warn('⚠️ Failed to fetch existing rows for posted_at preservation:', fetchError.message);
+      console.warn('⚠️ Failed to fetch existing rows for preservation:', fetchError.message);
     }
     
-    // Create a map of existing posted_at values by listing_hash
-    const existingPostedAtMap = new Map<string, { posted_at: string | null; age_days: number | null }>();
+    // Create a map of existing values by listing_hash
+    const existingMap = new Map<string, { 
+      posted_at: string | null; 
+      source_first_seen_at: string | null;
+      age_days: number | null;
+    }>();
     if (existingRows) {
       existingRows.forEach(row => {
-        existingPostedAtMap.set(row.listing_hash, {
+        existingMap.set(row.listing_hash, {
           posted_at: row.posted_at,
+          source_first_seen_at: row.source_first_seen_at,
           age_days: row.age_days
         });
       });
     }
     
-    // Prepare records with first_seen_at for new rows
+    // Prepare records with preservation logic
     // Note: first_seen_at will be preserved by trigger for existing rows
-    // Preserve existing posted_at if it exists, otherwise use parsed value
-    // CRITICAL: Ensure posted_at and age_days are ALWAYS set together (never null)
     const recordsToUpsert = activeRecords.map(record => {
-      const existing = existingPostedAtMap.get(record.listing_hash);
+      const existing = existingMap.get(record.listing_hash);
       
-      // Determine posted_at: preserve existing if it exists, otherwise use parsed value
-      // Use nullish coalescing (??) to preserve 0 values
-      let finalPostedAt: string | null = existing?.posted_at ?? record.posted_at ?? null;
+      // Preserve posted_at (system_first_seen_at) if it exists, otherwise use parsed value
+      const finalPostedAt: string = existing?.posted_at ?? record.posted_at;
+      
+      // Preserve source_first_seen_at if it exists, otherwise use parsed value
+      let finalSourceFirstSeenAt: string | null = existing?.source_first_seen_at ?? record.source_first_seen_at ?? null;
+      
+      // Calculate age_days: use source_first_seen_at if present, else fallback to posted_at
       let finalAgeDays: number | null = null;
-      
-      // Priority 1: If posted_at is set (from existing or parsed), always calculate age_days from it
-      if (finalPostedAt !== null) {
+      if (finalSourceFirstSeenAt !== null) {
+        const now = new Date();
+        const sourceDate = new Date(finalSourceFirstSeenAt);
+        const diffTime = now.getTime() - sourceDate.getTime();
+        finalAgeDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+      } else {
+        // Fallback: calculate from posted_at (system_first_seen_at)
         const now = new Date();
         const postedDate = new Date(finalPostedAt);
         const diffTime = now.getTime() - postedDate.getTime();
         finalAgeDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-        // If calculated age is negative (future date), normalize to 0
-        if (finalAgeDays < 0) {
-          finalAgeDays = 0;
-          finalPostedAt = now.toISOString();
+        // Use posted_at as source_first_seen_at fallback
+        if (finalSourceFirstSeenAt === null) {
+          finalSourceFirstSeenAt = finalPostedAt;
         }
-      } 
-      // Priority 2: If posted_at is null but age_days exists (from parsed row), calculate posted_at
-      else if (record.age_days !== null && record.age_days !== undefined) {
-        finalAgeDays = record.age_days;
-        const now = Date.now();
-        const postedDate = new Date(now - finalAgeDays * 24 * 60 * 60 * 1000);
-        finalPostedAt = postedDate.toISOString();
-      }
-      // Priority 3: Default fallback - both are missing, set age_days=0, posted_at=now()
-      else {
-        finalAgeDays = 0;
-        finalPostedAt = new Date().toISOString();
-      }
-      
-      // Final safety check: ensure both are never null
-      if (finalPostedAt === null || finalAgeDays === null) {
-        console.warn(`[WARN] Safety fallback: posted_at or age_days was null for listing_hash ${record.listing_hash}`);
-        finalAgeDays = finalAgeDays ?? 0;
-        finalPostedAt = finalPostedAt ?? new Date().toISOString();
       }
       
       return {
         ...record,
         first_seen_at: now,
-        // ALWAYS include both fields in upsert payload (never null)
         posted_at: finalPostedAt,
+        source_first_seen_at: finalSourceFirstSeenAt,
         age_days: finalAgeDays
       };
     });
