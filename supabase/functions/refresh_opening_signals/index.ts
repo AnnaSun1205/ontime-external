@@ -917,6 +917,45 @@ serve(async (req) => {
       // De-duplicate active roles by apply_url (AFTER fill-down and verification)
       const uniqueActiveRows = deduplicateByApplyUrl(filledRows);
       console.log(`🔍 Active roles: De-duplicated to ${uniqueActiveRows.length} unique rows`);
+      
+      // GUARDRAIL 1: Verify company ↔ apply_url alignment again AFTER deduplication
+      // This ensures the actual upsert set has no conflicts
+      console.log('🔍 Verifying company ↔ apply_url alignment on deduplicated rows (upsert set)...');
+      const postDedupVerification = verifyCompanyUrlAlignment(uniqueActiveRows, 'simplifyjobs_github');
+      
+      if (!postDedupVerification.isValid) {
+        const conflictCount = postDedupVerification.conflicts.length;
+        console.error(`❌ POST-DEDUP VERIFICATION FAILED: Found ${conflictCount} apply_url(s) with multiple company_names after deduplication:`);
+        for (const conflict of postDedupVerification.conflicts.slice(0, 10)) {
+          console.error(`   apply_url: ${conflict.apply_url}`);
+          console.error(`   companies: ${conflict.companies.join(', ')}`);
+        }
+        
+        debugInfo.verification = {
+          ...debugInfo.verification,
+          post_dedup: {
+            isValid: false,
+            conflict_count: conflictCount,
+            conflicts: postDedupVerification.conflicts.slice(0, 20)
+          }
+        };
+        
+        // DO NOT silently upsert conflicting data - throw error
+        throw new Error(
+          `Data integrity violation after deduplication: ${conflictCount} apply_url(s) have multiple company_names. ` +
+          `This indicates deduplication logic issue. Check logs for details.`
+        );
+      } else {
+        console.log(`✅ Post-dedup verification passed: All apply_urls in upsert set map to exactly one company_name`);
+        debugInfo.verification = {
+          ...debugInfo.verification,
+          post_dedup: {
+            isValid: true,
+            conflict_count: 0
+          }
+        };
+      }
+      
       parsedRows = uniqueActiveRows;
     }
 
@@ -1077,17 +1116,22 @@ serve(async (req) => {
       };
     });
     
-    // Perform upsert directly - no need to check existing hashes first
-    // Supabase will handle conflict resolution via listing_hash unique constraint
+    // Perform upsert with conflict resolution on both listing_hash and apply_url
+    // Priority: listing_hash (primary deduplication key), then apply_url (one row per URL guarantee)
+    // Supabase will handle conflict resolution via unique constraints
     // On conflict, ALL fields in recordsToUpsert will be updated, including role_title (sanitized)
     // posted_at is preserved if it already exists (only set when NULL)
     const { data: upsertedData, error: upsertError } = await supabase
       .from('opening_signals')
       .upsert(recordsToUpsert, {
-        onConflict: 'listing_hash',
+        onConflict: 'listing_hash',  // Primary conflict resolution
         ignoreDuplicates: false
       })
-      .select('id, listing_hash');
+      .select('id, listing_hash, apply_url');
+    
+    // Note: If apply_url unique index exists, Supabase will also enforce one-row-per-URL
+    // If a row with same apply_url but different listing_hash exists, the unique constraint
+    // will prevent insertion, ensuring data integrity
     
     if (upsertError) {
       debugInfo.upsert.errors.push(upsertError.message);
@@ -1105,8 +1149,10 @@ serve(async (req) => {
     
     console.log(`✅ Upserted ${totalUpserted} records (all with posted_at and age_days)`);
     
-    // DATABASE-LEVEL VERIFICATION: Check for apply_url → company_name conflicts in database
-    console.log('🔍 Running database-level verification: checking for apply_url → company_name conflicts...');
+    // DATABASE-LEVEL VERIFICATION: Check for apply_url → company_name conflicts AND duplicate apply_urls
+    console.log('🔍 Running database-level verification: checking for apply_url conflicts and duplicates...');
+    
+    // Check 1: apply_url → company_name conflicts (multiple companies for same URL)
     const { data: dbConflicts, error: dbCheckError } = await supabase
       .from('opening_signals')
       .select('apply_url, company_name')
@@ -1133,7 +1179,7 @@ serve(async (req) => {
         urlToCompanies.get(url)!.add(company);
       }
       
-      // Find conflicts
+      // Find conflicts (multiple companies for same URL)
       const dbConflictList: Array<{ apply_url: string; companies: string[] }> = [];
       for (const [url, companies] of urlToCompanies.entries()) {
         if (companies.size > 1) {
@@ -1172,6 +1218,57 @@ serve(async (req) => {
           database_check: {
             isValid: true,
             conflict_count: 0
+          }
+        };
+      }
+      
+      // GUARDRAIL 2: Check for duplicate apply_urls (multiple rows with same URL)
+      const urlCounts = new Map<string, number>();
+      for (const row of dbConflicts) {
+        if (!row.apply_url) continue;
+        const url = row.apply_url.trim();
+        urlCounts.set(url, (urlCounts.get(url) || 0) + 1);
+      }
+      
+      const duplicateUrls: Array<{ apply_url: string; count: number }> = [];
+      for (const [url, count] of urlCounts.entries()) {
+        if (count > 1) {
+          duplicateUrls.push({ apply_url: url, count });
+        }
+      }
+      
+      if (duplicateUrls.length > 0) {
+        console.error(`❌ DATABASE DUPLICATE CHECK FAILED: Found ${duplicateUrls.length} apply_url(s) with multiple rows in database:`);
+        for (const dup of duplicateUrls.slice(0, 10)) {
+          console.error(`   apply_url: ${dup.apply_url} (appears ${dup.count} times)`);
+        }
+        if (duplicateUrls.length > 10) {
+          console.error(`   ... and ${duplicateUrls.length - 10} more duplicates`);
+        }
+        
+        debugInfo.verification = {
+          ...debugInfo.verification,
+          database_check: {
+            ...debugInfo.verification?.database_check,
+            duplicate_check: {
+              isValid: false,
+              duplicate_count: duplicateUrls.length,
+              duplicates: duplicateUrls.slice(0, 20)
+            }
+          }
+        };
+        
+        console.warn('⚠️ WARNING: Database contains duplicate apply_urls. This violates one-row-per-URL guarantee.');
+      } else {
+        console.log(`✅ Database duplicate check passed: All apply_urls appear exactly once`);
+        debugInfo.verification = {
+          ...debugInfo.verification,
+          database_check: {
+            ...debugInfo.verification?.database_check,
+            duplicate_check: {
+              isValid: true,
+              duplicate_count: 0
+            }
           }
         };
       }
