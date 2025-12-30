@@ -613,6 +613,50 @@ function fillDownCompanyNames(rows: ParsedRow[]): ParsedRow[] {
 }
 
 /**
+ * Verification: Check that each apply_url maps to exactly one company_name
+ * This ensures data integrity after fill-down and before deduplication.
+ * 
+ * @param rows Parsed rows after fill-down
+ * @param source Source identifier for logging
+ * @returns Object with isValid flag and conflicts array
+ */
+function verifyCompanyUrlAlignment(
+  rows: ParsedRow[],
+  source: string = 'unknown'
+): { isValid: boolean; conflicts: Array<{ apply_url: string; companies: string[] }> } {
+  const urlToCompanies = new Map<string, Set<string>>();
+  
+  // Track all apply_url → company_name mappings
+  for (const row of rows) {
+    if (!row.apply_url) continue; // Skip rows without apply_url
+    
+    const url = row.apply_url.trim();
+    const company = row.company_name.trim();
+    
+    if (!urlToCompanies.has(url)) {
+      urlToCompanies.set(url, new Set());
+    }
+    urlToCompanies.get(url)!.add(company);
+  }
+  
+  // Find conflicts: apply_urls with multiple company_names
+  const conflicts: Array<{ apply_url: string; companies: string[] }> = [];
+  for (const [url, companies] of urlToCompanies.entries()) {
+    if (companies.size > 1) {
+      conflicts.push({
+        apply_url: url,
+        companies: Array.from(companies)
+      });
+    }
+  }
+  
+  return {
+    isValid: conflicts.length === 0,
+    conflicts
+  };
+}
+
+/**
  * Extracts all tables from HTML and categorizes them as active or inactive
  */
 function extractTables(html: string): { activeTables: string[]; inactiveTables: string[] } {
@@ -719,6 +763,41 @@ serve(async (req) => {
         console.log('🔄 Filling down company names based on original order...');
         structuredRows = fillDownCompanyNames(structuredRows);
         console.log(`✅ Filled down company names for ${structuredRows.length} rows`);
+        
+        // VERIFICATION: Check company ↔ apply_url alignment after fill-down
+        console.log('🔍 Verifying company ↔ apply_url alignment...');
+        const verification = verifyCompanyUrlAlignment(structuredRows, 'structured_source');
+        
+        if (!verification.isValid) {
+          const conflictCount = verification.conflicts.length;
+          console.error(`❌ VERIFICATION FAILED: Found ${conflictCount} apply_url(s) with multiple company_names:`);
+          for (const conflict of verification.conflicts.slice(0, 10)) {
+            console.error(`   apply_url: ${conflict.apply_url}`);
+            console.error(`   companies: ${conflict.companies.join(', ')}`);
+          }
+          
+          debugInfo.verification = {
+            company_url_alignment: {
+              isValid: false,
+              conflict_count: conflictCount,
+              conflicts: verification.conflicts.slice(0, 20)
+            }
+          };
+          
+          // DO NOT silently upsert conflicting data - throw error
+          throw new Error(
+            `Data integrity violation: ${conflictCount} apply_url(s) have multiple company_names. ` +
+            `This indicates a parsing or fill-down error. Check logs for details.`
+          );
+        } else {
+          console.log(`✅ Verification passed: All apply_urls map to exactly one company_name`);
+          debugInfo.verification = {
+            company_url_alignment: {
+              isValid: true,
+              conflict_count: 0
+            }
+          };
+        }
         
         debugInfo.parsing.method = 'structured';
         debugInfo.source_fetch.url = altUrl;
@@ -986,6 +1065,78 @@ serve(async (req) => {
     debugInfo.upsert.total = totalUpserted;
     
     console.log(`✅ Upserted ${totalUpserted} records (all with posted_at and age_days)`);
+    
+    // DATABASE-LEVEL VERIFICATION: Check for apply_url → company_name conflicts in database
+    console.log('🔍 Running database-level verification: checking for apply_url → company_name conflicts...');
+    const { data: dbConflicts, error: dbCheckError } = await supabase
+      .from('opening_signals')
+      .select('apply_url, company_name')
+      .not('apply_url', 'is', null);
+    
+    if (dbCheckError) {
+      console.warn('⚠️ Failed to run database verification check:', dbCheckError.message);
+      debugInfo.verification = {
+        ...debugInfo.verification,
+        database_check: {
+          error: dbCheckError.message
+        }
+      };
+    } else if (dbConflicts) {
+      // Group by apply_url and check for multiple company_names
+      const urlToCompanies = new Map<string, Set<string>>();
+      for (const row of dbConflicts) {
+        if (!row.apply_url) continue;
+        const url = row.apply_url.trim();
+        const company = row.company_name?.trim() || '';
+        if (!urlToCompanies.has(url)) {
+          urlToCompanies.set(url, new Set());
+        }
+        urlToCompanies.get(url)!.add(company);
+      }
+      
+      // Find conflicts
+      const dbConflictList: Array<{ apply_url: string; companies: string[] }> = [];
+      for (const [url, companies] of urlToCompanies.entries()) {
+        if (companies.size > 1) {
+          dbConflictList.push({
+            apply_url: url,
+            companies: Array.from(companies)
+          });
+        }
+      }
+      
+      if (dbConflictList.length > 0) {
+        console.error(`❌ DATABASE VERIFICATION FAILED: Found ${dbConflictList.length} apply_url(s) with multiple company_names in database:`);
+        for (const conflict of dbConflictList.slice(0, 10)) {
+          console.error(`   apply_url: ${conflict.apply_url}`);
+          console.error(`   companies: ${conflict.companies.join(', ')}`);
+        }
+        if (dbConflictList.length > 10) {
+          console.error(`   ... and ${dbConflictList.length - 10} more conflicts`);
+        }
+        
+        debugInfo.verification = {
+          ...debugInfo.verification,
+          database_check: {
+            isValid: false,
+            conflict_count: dbConflictList.length,
+            conflicts: dbConflictList.slice(0, 20)
+          }
+        };
+        
+        // Log warning but don't fail the entire run (data already upserted)
+        console.warn('⚠️ WARNING: Database contains apply_url → company_name conflicts. This may indicate a previous ingestion issue.');
+      } else {
+        console.log(`✅ Database verification passed: All apply_urls map to exactly one company_name`);
+        debugInfo.verification = {
+          ...debugInfo.verification,
+          database_check: {
+            isValid: true,
+            conflict_count: 0
+          }
+        };
+      }
+    }
     
     // Step 2: Stale cleanup AFTER upsert - mark listings inactive if not seen in 48 hours
     // This ensures legacy rows that weren't in the current fetch are marked inactive
