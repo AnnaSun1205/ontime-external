@@ -875,7 +875,46 @@ serve(async (req) => {
       const filledRows = fillDownCompanyNames(activeRows);
       console.log(`✅ Filled down company names for ${filledRows.length} rows`);
       
-      // De-duplicate active roles by apply_url (AFTER fill-down)
+      // VERIFICATION: Check company ↔ apply_url alignment after fill-down, before deduplication
+      console.log('🔍 Verifying company ↔ apply_url alignment...');
+      const verification = verifyCompanyUrlAlignment(filledRows, 'simplifyjobs_github');
+      
+      if (!verification.isValid) {
+        const conflictCount = verification.conflicts.length;
+        console.error(`❌ VERIFICATION FAILED: Found ${conflictCount} apply_url(s) with multiple company_names:`);
+        for (const conflict of verification.conflicts.slice(0, 10)) { // Log first 10
+          console.error(`   apply_url: ${conflict.apply_url}`);
+          console.error(`   companies: ${conflict.companies.join(', ')}`);
+        }
+        if (conflictCount > 10) {
+          console.error(`   ... and ${conflictCount - 10} more conflicts`);
+        }
+        
+        // Add to debug info
+        debugInfo.verification = {
+          company_url_alignment: {
+            isValid: false,
+            conflict_count: conflictCount,
+            conflicts: verification.conflicts.slice(0, 20) // Include first 20 in debug
+          }
+        };
+        
+        // DO NOT silently upsert conflicting data - throw error
+        throw new Error(
+          `Data integrity violation: ${conflictCount} apply_url(s) have multiple company_names. ` +
+          `This indicates a parsing or fill-down error. Check logs for details.`
+        );
+      } else {
+        console.log(`✅ Verification passed: All apply_urls map to exactly one company_name`);
+        debugInfo.verification = {
+          company_url_alignment: {
+            isValid: true,
+            conflict_count: 0
+          }
+        };
+      }
+      
+      // De-duplicate active roles by apply_url (AFTER fill-down and verification)
       const uniqueActiveRows = deduplicateByApplyUrl(filledRows);
       console.log(`🔍 Active roles: De-duplicated to ${uniqueActiveRows.length} unique rows`);
       parsedRows = uniqueActiveRows;
