@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Listing {
   id: string;
@@ -14,6 +14,7 @@ interface Listing {
   term: string;
   applyUrl: string;
   lastSeenAt: string;
+  countries: string[];
 }
 
 export default function ListingsTab() {
@@ -22,6 +23,9 @@ export default function ListingsTab() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<string>(() => {
+    return localStorage.getItem('listings_country') || 'Canada';
+  });
 
   // Fetch listings from Supabase
   useEffect(() => {
@@ -30,52 +34,42 @@ export default function ListingsTab() {
         setLoading(true);
         setError(null);
 
-        console.log('🔍 Fetching listings from opening_signals...');
+        console.log('🔍 Fetching listings from opening_signals_main...');
 
-        type OpeningSignal = {
+        type OpeningSignalMain = {
           id: string;
           company_name: string;
           role_title: string;
           location: string | null;
           term: string;
           apply_url: string;
-          posted_at: string | null;
-          age_days: number | null;
           last_seen_at: string;
-          is_active: boolean;
+          countries: string[] | null;
         };
 
-        // Type assertion to avoid "Type instantiation is excessively deep" error
-        // @ts-expect-error - Supabase type inference is too complex, using explicit type
         const { data, error: fetchError } = await supabase
-          .from('opening_signals')
-          .select('id, company_name, role_title, location, term, apply_url, posted_at, age_days, last_seen_at, is_active')
-          .eq('is_active', true)  // Only show active listings
-          .order('posted_at', { ascending: false, nullsFirst: false })  // Sort by posted date (newest first), nulls last
-          .order('last_seen_at', { ascending: false })  // Fallback to last_seen_at if posted_at is null
-          .limit(200) as { data: OpeningSignal[] | null; error: any };
+          .from('opening_signals_main')
+          .select('id, company_name, role_title, location, term, apply_url, last_seen_at, countries')
+          .contains('countries', [selectedCountry])
+          .order('last_seen_at', { ascending: false })
+          .limit(200) as { data: OpeningSignalMain[] | null; error: any };
 
-        // Debug log: data length
         console.log('📊 Data length:', data?.length ?? 0);
 
         if (fetchError) {
           console.error('❌ Supabase query error:', fetchError);
-          console.error('   Error code:', fetchError.code);
-          console.error('   Error message:', fetchError.message);
-          console.error('   Error details:', fetchError.details);
-          console.error('   Error hint:', fetchError.hint);
           throw fetchError;
         }
 
-        // Map Supabase data to Listing interface
         const mappedListings: Listing[] = (data || []).map((signal) => ({
-          id: signal.id,
+          id: signal.id || '',
           company: signal.company_name || '',
           role: signal.role_title || '',
           location: signal.location || 'Remote',
           term: signal.term || '',
           applyUrl: signal.apply_url || '',
-          lastSeenAt: signal.last_seen_at || ''
+          lastSeenAt: signal.last_seen_at || '',
+          countries: signal.countries || []
         }));
 
         console.log('✅ Mapped listings count:', mappedListings.length);
@@ -90,7 +84,7 @@ export default function ListingsTab() {
     }
 
     fetchListings();
-  }, []);
+  }, [selectedCountry]);
 
   const filteredListings = useMemo(() => {
     if (!searchQuery.trim()) return listings;
