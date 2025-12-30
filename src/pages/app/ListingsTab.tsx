@@ -401,16 +401,20 @@ export default function ListingsTab() {
           </button>
         ))}
 
-        {/* Mark all as seen button */}
-        {tabCounts.new > 0 && (
-          <button
-            onClick={handleMarkAllAsSeen}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium text-muted-foreground hover:bg-muted transition-colors ml-auto"
-          >
-            <CheckCheck className="w-3.5 h-3.5" />
-            Mark all as seen
-          </button>
-        )}
+        {/* Mark all as seen button - always visible but disabled when no new listings */}
+        <button
+          onClick={handleMarkAllAsSeen}
+          disabled={tabCounts.new === 0}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ml-auto",
+            tabCounts.new > 0
+              ? "text-muted-foreground hover:bg-muted"
+              : "text-muted-foreground/50 cursor-not-allowed"
+          )}
+        >
+          <CheckCheck className="w-3.5 h-3.5" />
+          Mark all as seen
+        </button>
       </div>
 
       {/* Loading state */}
