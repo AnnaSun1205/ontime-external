@@ -125,6 +125,9 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
         const data = JSON.parse(text);
         // Adapt based on actual structure - this is a placeholder
         if (Array.isArray(data)) {
+          // Track current company name across rows for carry-forward
+          let currentCompany: string | null = null;
+          
           return data.map((item: any) => {
             // Parse age if available in JSON
             let ageDays: number | null = null;
@@ -162,8 +165,26 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               }
             }
             
+            // Handle company name carry-forward
+            const raw = (item.company || item.company_name || "").trim();
+            const cleaned = raw.replaceAll("↳", "").replaceAll("└", "").replaceAll("→", "").trim();
+            const isSameAsPrevious = 
+              !cleaned || 
+              cleaned === "" || 
+              cleaned.toLowerCase() === "unknown";
+            
+            const company = isSameAsPrevious ? currentCompany : cleaned;
+            
+            // Only update the tracker if we got a real company
+            if (!isSameAsPrevious && company) {
+              currentCompany = company;
+            }
+            
+            // IMPORTANT: never send null company_name to DB
+            const companyName = company ?? currentCompany ?? "Unknown";
+            
             return {
-              company_name: item.company || item.company_name || '',
+              company_name: companyName,
               role_title: sanitizeRoleTitle(item.role || item.role_title || '', term),
               location: item.location || null,
               apply_url: item.apply_url || item.url || null,
@@ -190,6 +211,9 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
         
         if (companyIdx >= 0 && roleIdx >= 0) {
           const ageIdx = headers.findIndex(h => h.includes('age') || h.includes('posted') || h.includes('date'));
+          // Track current company name across rows for carry-forward
+          let currentCompany: string | null = null;
+          
           return lines.slice(1).map(line => {
             const cols = line.split(',').map(c => c.trim());
             
@@ -208,8 +232,26 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               }
             }
             
+            // Handle company name carry-forward
+            const raw = (cols[companyIdx] || "").trim();
+            const cleaned = raw.replaceAll("↳", "").replaceAll("└", "").replaceAll("→", "").trim();
+            const isSameAsPrevious = 
+              !cleaned || 
+              cleaned === "" || 
+              cleaned.toLowerCase() === "unknown";
+            
+            const company = isSameAsPrevious ? currentCompany : cleaned;
+            
+            // Only update the tracker if we got a real company
+            if (!isSameAsPrevious && company) {
+              currentCompany = company;
+            }
+            
+            // IMPORTANT: never send null company_name to DB
+            const companyName = company ?? currentCompany ?? "Unknown";
+            
             return {
-              company_name: cols[companyIdx] || '',
+              company_name: companyName,
               role_title: sanitizeRoleTitle(cols[roleIdx] || '', term),
               location: locationIdx >= 0 ? (cols[locationIdx] || null) : null,
               apply_url: urlIdx >= 0 ? (cols[urlIdx] || null) : null,
@@ -322,27 +364,38 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         rawCompanyName = cells[companyIdx]?.replace(/<[^>]+>/g, '').trim() || '';
       }
       
-      // Handle "↳" symbol or empty company name - use previous company name
-      let companyName = rawCompanyName.trim();
-      // Check if company name is empty, just "↳" (with any whitespace), or other continuation symbols
-      const isContinuationSymbol = !companyName || 
-                                   companyName === '↳' || 
-                                   companyName.replace(/\s/g, '') === '↳' ||
-                                   companyName === '→' ||
-                                   companyName.replace(/\s/g, '') === '→';
+      // Clean symbols at ingest time (remove ↳, └, etc.)
+      let cleanedCompanyName = rawCompanyName
+        .replaceAll("↳", "")
+        .replaceAll("└", "")
+        .replaceAll("→", "")
+        .trim();
       
-      if (isContinuationSymbol) {
-        // Use the previous company name if available
-        if (currentCompany) {
-          companyName = currentCompany;
-        } else {
-          // Skip this row if we don't have a previous company name
-          skipped++;
-          continue;
-        }
+      // Check if company name is a continuation symbol or empty/Unknown
+      const raw = cleanedCompanyName;
+      const isSameAsPrevious = 
+        !raw || 
+        raw === "" || 
+        raw === "↳" || 
+        raw === "└" || 
+        raw === "→" ||
+        raw.toLowerCase() === "unknown";
+      
+      // Determine company: use currentCompany if continuation, otherwise use cleaned name
+      let companyName: string;
+      if (isSameAsPrevious) {
+        // Use previous company name
+        companyName = currentCompany ?? "Unknown";
       } else {
-        // Update current company name for future rows
+        // This is a real company name
+        companyName = raw;
+        // Only update the tracker if we got a real company
         currentCompany = companyName;
+      }
+      
+      // IMPORTANT: never send null/empty company_name to DB
+      if (!companyName || companyName.trim() === "") {
+        companyName = currentCompany ?? "Unknown";
       }
       
       let roleTitle = cells[roleIdx]?.replace(/<[^>]+>/g, '').trim() || '';
