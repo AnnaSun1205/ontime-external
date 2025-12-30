@@ -426,6 +426,8 @@ export type Database = {
           id: string
           last_login: string | null
           last_seen_listings_at: string | null
+          last_seen_listings_at_ca: string | null
+          last_seen_listings_at_us: string | null
           quiet_mode: boolean | null
           selected_companies: string[] | null
           selected_regions: string[] | null
@@ -442,6 +444,8 @@ export type Database = {
           id?: string
           last_login?: string | null
           last_seen_listings_at?: string | null
+          last_seen_listings_at_ca?: string | null
+          last_seen_listings_at_us?: string | null
           quiet_mode?: boolean | null
           selected_companies?: string[] | null
           selected_regions?: string[] | null
@@ -458,6 +462,8 @@ export type Database = {
           id?: string
           last_login?: string | null
           last_seen_listings_at?: string | null
+          last_seen_listings_at_ca?: string | null
+          last_seen_listings_at_us?: string | null
           quiet_mode?: boolean | null
           selected_companies?: string[] | null
           selected_regions?: string[] | null

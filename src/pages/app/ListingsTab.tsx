@@ -59,25 +59,32 @@ export default function ListingsTab() {
     const saved = localStorage.getItem("listings-country-filter");
     return (saved === "canada" || saved === "us") ? saved : "us";
   });
-  const [lastSeenListingsAt, setLastSeenListingsAt] = useState<string | null>(null);
+  const [lastSeenListingsAtUs, setLastSeenListingsAtUs] = useState<string | null>(null);
+  const [lastSeenListingsAtCa, setLastSeenListingsAtCa] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  
+  // Compute current cutoff based on selected country
+  const lastSeenListingsAt = countryFilter === "canada" ? lastSeenListingsAtCa : lastSeenListingsAtUs;
 
   // Save country filter to localStorage
   useEffect(() => {
     localStorage.setItem("listings-country-filter", countryFilter);
   }, [countryFilter]);
 
-  // Fetch user preferences (last_seen_listings_at) and auto-initialize if NULL
+  // Fetch user preferences (country-specific last_seen timestamps)
   useEffect(() => {
     async function fetchUserPreferences() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.log('[New Logic] No user logged in');
+        return;
+      }
       
       setUserId(user.id);
 
       const { data, error } = await supabase
         .from('user_preferences')
-        .select('last_seen_listings_at, last_login')
+        .select('last_seen_listings_at_us, last_seen_listings_at_ca, last_login')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -87,32 +94,25 @@ export default function ListingsTab() {
       }
 
       if (data) {
-        // Compute cutoff = max(last_login, last_seen_listings_at)
-        // If last_seen_listings_at is NULL, auto-initialize to now() to prevent all listings being "New"
-        let cutoff = data.last_seen_listings_at;
-        
-        if (!cutoff) {
-          // Auto-initialize: set to now() in DB and local state
-          const now = new Date().toISOString();
-          console.log('[New Logic] last_seen_listings_at is NULL, auto-initializing to:', now);
-          
-          const { error: updateError } = await supabase
-            .from('user_preferences')
-            .update({ last_seen_listings_at: now })
-            .eq('user_id', user.id);
-          
-          if (updateError) {
-            console.error('[New Logic] Error auto-initializing last_seen_listings_at:', updateError);
-          }
-          cutoff = now;
-        } else if (data.last_login && new Date(data.last_login) > new Date(cutoff)) {
-          // Use last_login if it's more recent than last_seen_listings_at
-          cutoff = data.last_login;
-          console.log('[New Logic] Using last_login as cutoff:', cutoff);
+        // Set US cutoff
+        let usCutoff = (data as any).last_seen_listings_at_us;
+        if (!usCutoff) {
+          usCutoff = new Date().toISOString();
+        } else if (data.last_login && new Date(data.last_login) > new Date(usCutoff)) {
+          usCutoff = data.last_login;
         }
+        setLastSeenListingsAtUs(usCutoff);
         
-        setLastSeenListingsAt(cutoff);
-        console.log('[New Logic] Final cutoff:', cutoff);
+        // Set CA cutoff
+        let caCutoff = (data as any).last_seen_listings_at_ca;
+        if (!caCutoff) {
+          caCutoff = new Date().toISOString();
+        } else if (data.last_login && new Date(data.last_login) > new Date(caCutoff)) {
+          caCutoff = data.last_login;
+        }
+        setLastSeenListingsAtCa(caCutoff);
+        
+        console.log('[New Logic] US cutoff:', usCutoff, '| CA cutoff:', caCutoff);
       }
     }
 
@@ -299,23 +299,33 @@ export default function ListingsTab() {
     }
 
     const now = new Date().toISOString();
-    console.log('[Mark as Seen] Setting last_seen_listings_at to:', now);
+    
+    // Update only the country-specific timestamp
+    const updateField = countryFilter === "canada" 
+      ? { last_seen_listings_at_ca: now }
+      : { last_seen_listings_at_us: now };
+    
+    console.log(`[Mark as Seen] Setting ${countryFilter} cutoff to:`, now);
     
     const { error } = await supabase
       .from('user_preferences')
-      .update({ last_seen_listings_at: now })
+      .update(updateField)
       .eq('user_id', userId);
 
     if (error) {
-      console.error('[Mark as Seen] Error updating last_seen_listings_at:', error);
+      console.error('[Mark as Seen] Error:', error);
       toast.error('Failed to mark as seen');
       return;
     }
 
-    // Update local state immediately - this will recompute newCount to 0
-    setLastSeenListingsAt(now);
-    console.log('[Mark as Seen] Success! New count should now be 0');
-    toast.success('All listings marked as seen');
+    // Update local state immediately for the current country only
+    if (countryFilter === "canada") {
+      setLastSeenListingsAtCa(now);
+    } else {
+      setLastSeenListingsAtUs(now);
+    }
+    console.log(`[Mark as Seen] ${countryFilter.toUpperCase()} New count should now be 0`);
+    toast.success(`All ${countryFilter === "canada" ? "Canada" : "US"} listings marked as seen`);
   };
 
   const isNewListing = (listing: Listing) => {
