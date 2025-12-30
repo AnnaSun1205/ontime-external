@@ -171,10 +171,75 @@ export type Database = {
         }
         Relationships: []
       }
+      opening_seen: {
+        Row: {
+          opening_id: string
+          seen_at: string
+          user_id: string
+        }
+        Insert: {
+          opening_id: string
+          seen_at?: string
+          user_id: string
+        }
+        Update: {
+          opening_id?: string
+          seen_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opening_seen_opening_id_fkey"
+            columns: ["opening_id"]
+            isOneToOne: false
+            referencedRelation: "opening_signals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opening_seen_opening_id_fkey"
+            columns: ["opening_id"]
+            isOneToOne: false
+            referencedRelation: "opening_signals_main"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      opening_signal_countries: {
+        Row: {
+          country: string
+          opening_id: string
+        }
+        Insert: {
+          country: string
+          opening_id: string
+        }
+        Update: {
+          country?: string
+          opening_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opening_signal_countries_opening_id_fkey"
+            columns: ["opening_id"]
+            isOneToOne: false
+            referencedRelation: "opening_signals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opening_signal_countries_opening_id_fkey"
+            columns: ["opening_id"]
+            isOneToOne: false
+            referencedRelation: "opening_signals_main"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opening_signals: {
         Row: {
+          age_days: number | null
           apply_url: string
           company_name: string
+          country: string | null
           created_at: string
           first_seen_at: string
           id: string
@@ -182,15 +247,19 @@ export type Database = {
           last_seen_at: string
           listing_hash: string | null
           location: string | null
+          posted_at: string | null
           role_title: string
           signal_type: string
           source: string
+          source_first_seen_at: string | null
           term: string
           updated_at: string
         }
         Insert: {
+          age_days?: number | null
           apply_url: string
           company_name: string
+          country?: string | null
           created_at?: string
           first_seen_at?: string
           id?: string
@@ -198,15 +267,19 @@ export type Database = {
           last_seen_at?: string
           listing_hash?: string | null
           location?: string | null
+          posted_at?: string | null
           role_title: string
           signal_type?: string
           source?: string
+          source_first_seen_at?: string | null
           term?: string
           updated_at?: string
         }
         Update: {
+          age_days?: number | null
           apply_url?: string
           company_name?: string
+          country?: string | null
           created_at?: string
           first_seen_at?: string
           id?: string
@@ -214,9 +287,11 @@ export type Database = {
           last_seen_at?: string
           listing_hash?: string | null
           location?: string | null
+          posted_at?: string | null
           role_title?: string
           signal_type?: string
           source?: string
+          source_first_seen_at?: string | null
           term?: string
           updated_at?: string
         }
@@ -431,7 +506,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      opening_signals_main: {
+        Row: {
+          age_days: number | null
+          apply_url: string | null
+          company_name: string | null
+          countries: string[] | null
+          country: string | null
+          created_at: string | null
+          first_seen_at: string | null
+          id: string | null
+          is_active: boolean | null
+          last_seen_at: string | null
+          listing_hash: string | null
+          location: string | null
+          posted_at: string | null
+          role_title: string | null
+          signal_type: string | null
+          source: string | null
+          source_first_seen_at: string | null
+          term: string | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       call_refresh_opening_signals: { Args: never; Returns: undefined }
@@ -445,6 +543,10 @@ export type Database = {
           p_term: string
         }
         Returns: string
+      }
+      mark_openings_seen: {
+        Args: { p_country: string; p_end: string; p_start: string }
+        Returns: undefined
       }
       update_opening_signals_is_active: { Args: never; Returns: undefined }
     }

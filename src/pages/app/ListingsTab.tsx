@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Listing {
   id: string;
@@ -46,7 +46,6 @@ export default function ListingsTab() {
         };
 
         // Type assertion to avoid "Type instantiation is excessively deep" error
-        // @ts-expect-error - Supabase type inference is too complex, using explicit type
         const { data, error: fetchError } = await supabase
           .from('opening_signals')
           .select('id, company_name, role_title, location, term, apply_url, posted_at, age_days, last_seen_at, is_active')
