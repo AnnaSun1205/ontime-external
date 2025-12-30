@@ -923,6 +923,10 @@ serve(async (req) => {
 
     console.log('🚀 Starting fetch from GitHub...');
     
+    // These will store the final URL sets for post-upsert is_active updates
+    let ACTIVE_URLS_FINAL: Set<string> | null = null;
+    let INACTIVE_URLS_FINAL: Set<string> | null = null;
+    
     // Try structured sources first (if available)
     let parsedRows: ParsedRow[] | null = null;
     for (const altUrl of ALTERNATIVE_SOURCES) {
@@ -1049,10 +1053,6 @@ serve(async (req) => {
       debugInfo.parsing.active_tables = activeTables.length;
       debugInfo.parsing.inactive_tables = inactiveTables.length;
       console.log(`   Found ${activeTables.length} active table(s) and ${inactiveTables.length} inactive table(s)`);
-      
-      // These will be used to build active_set and inactive_set after parsing
-      let ACTIVE_URLS_FINAL: Set<string> | null = null;
-      let INACTIVE_URLS_FINAL: Set<string> | null = null;
 
       // Parse active roles with error tracking
       let activeRows: ParsedRow[] = [];
