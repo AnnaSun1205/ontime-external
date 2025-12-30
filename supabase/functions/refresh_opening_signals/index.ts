@@ -76,6 +76,19 @@ function sanitizeRoleTitle(input: string, term?: string): string {
 }
 
 /**
+ * Normalizes and validates an apply_url
+ * Returns null for empty, 🔒, or non-HTTP(S) URLs
+ * Only returns valid HTTP(S) URLs as-is (no normalization/prefixing)
+ */
+function normalizeApplyUrl(raw: string | null): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s || s === "🔒" || s.includes("🔒")) return null;
+  if (!/^https?:\/\//i.test(s)) return null;
+  return s;
+}
+
+/**
  * Validates that an apply_url is a real, valid URL
  * Rejects null, empty, or URLs containing 🔒
  * Only accepts URLs that match ^https?:// pattern
@@ -199,21 +212,9 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
             // IMPORTANT: never send null company_name to DB
             const companyName = company ?? currentCompany ?? "Unknown";
             
-            // Validate and clean apply_url
+            // Normalize apply_url (rejects 🔒, non-HTTP(S), etc. - no prefixing/repairing)
             const rawApplyUrl = item.apply_url || item.url || null;
-            let applyUrl: string | null = null;
-            if (rawApplyUrl) {
-              const trimmed = String(rawApplyUrl).trim();
-              // If it's 🔒 or empty, set to null
-              if (trimmed === '🔒' || !trimmed) {
-                applyUrl = null;
-              } else if (isValidApplyUrl(trimmed)) {
-                applyUrl = trimmed;
-              } else {
-                // Invalid URL - set to null
-                applyUrl = null;
-              }
-            }
+            const applyUrl = normalizeApplyUrl(rawApplyUrl);
             
             return {
               company_name: companyName,
@@ -289,21 +290,9 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
             // IMPORTANT: never send null company_name to DB
             const companyName = company ?? currentCompany ?? "Unknown";
             
-            // Parse and validate apply_url
+            // Normalize apply_url (rejects 🔒, non-HTTP(S), etc. - no prefixing/repairing)
             const rawApplyUrl = urlIdx >= 0 ? (cols[urlIdx] || null) : null;
-            let applyUrl: string | null = null;
-            if (rawApplyUrl) {
-              const trimmed = String(rawApplyUrl).trim();
-              // If it's 🔒 or empty, set to null
-              if (trimmed === '🔒' || !trimmed) {
-                applyUrl = null;
-              } else if (isValidApplyUrl(trimmed)) {
-                applyUrl = trimmed;
-              } else {
-                // Invalid URL - set to null
-                applyUrl = null;
-              }
-            }
+            const applyUrl = normalizeApplyUrl(rawApplyUrl);
             
             return {
               company_name: companyName,
@@ -459,22 +448,18 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       const location = cells[locationIdx]?.replace(/<[^>]+>/g, '').trim() || null;
       
       // Application column should have the apply URL
+      // Extract raw value and normalize using helper (no prefixing/repairing)
       let applyUrl: string | null = null;
       if (tdMatches[applyIdx]) {
         const applicationCell = tdMatches[applyIdx];
         const applyLinkMatch = applicationCell.match(/<a[^>]+href=["']([^"']+)["'][^>]*>/i);
         if (applyLinkMatch) {
-          applyUrl = applyLinkMatch[1];
+          // Normalize the URL from href attribute (rejects 🔒, non-HTTP(S), etc.)
+          applyUrl = normalizeApplyUrl(applyLinkMatch[1]);
         } else {
+          // Extract from cell content and normalize
           const cellContent = cells[applyIdx] || '';
-          const trimmed = cellContent.trim();
-          
-          // If cell is 🔒 or empty, set to null
-          if (trimmed === '🔒' || !trimmed) {
-            applyUrl = null;
-          } else {
-            applyUrl = trimmed;
-          }
+          applyUrl = normalizeApplyUrl(cellContent);
         }
       }
       
@@ -482,16 +467,12 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
       // For inactive tables: allow null apply_url
       if (!allowNullApplyUrl) {
         // Active jobs must have a valid apply URL
-        if (!applyUrl || !isValidApplyUrl(applyUrl)) {
+        if (!applyUrl) {
           skipped++;
           continue;
         }
-      } else {
-        // Inactive roles: if apply_url is invalid, set to null (but don't skip the row)
-        if (applyUrl && !isValidApplyUrl(applyUrl)) {
-          applyUrl = null;
-        }
       }
+      // For inactive tables, applyUrl can be null (already normalized)
       
       // Clean up values (companyName already cleaned above)
       // roleTitle is already sanitized above, just ensure it's trimmed
