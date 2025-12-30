@@ -810,7 +810,13 @@ serve(async (req) => {
         
         // VERIFICATION: Check company ↔ apply_url alignment after fill-down
         console.log('🔍 Verifying company ↔ apply_url alignment...');
-        const verification = verifyCompanyUrlAlignment(structuredRows, 'structured_source');
+        let verification;
+        try {
+          verification = verifyCompanyUrlAlignment(structuredRows, 'structured_source');
+        } catch (verifyError) {
+          console.error('❌ Error during verification:', verifyError);
+          throw new Error(`Verification failed: ${verifyError instanceof Error ? verifyError.message : 'Unknown error'}`);
+        }
         
         if (!verification.isValid) {
           const conflictCount = verification.conflicts.length;
