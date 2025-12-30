@@ -17,6 +17,7 @@ interface ParsedRow {
   apply_url: string | null;
   age_days: number | null;
   posted_at: string | null;
+  original_index?: number; // Preserve DOM order for fill-down
 }
 
 interface ParseResult {
@@ -128,7 +129,7 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
           // Track current company name across rows for carry-forward
           let currentCompany: string | null = null;
           
-          return data.map((item: any) => {
+          return data.map((item: any, index: number) => {
             // Parse age if available in JSON
             let ageDays: number | null = null;
             let postedAt: string | null = null;
@@ -189,7 +190,8 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
               location: item.location || null,
               apply_url: item.apply_url || item.url || null,
               age_days: ageDays,
-              posted_at: postedAt
+              posted_at: postedAt,
+              original_index: index // Preserve array order for fill-down
             };
           }).filter((r: ParsedRow) => r.company_name && r.role_title);
         }
@@ -214,7 +216,7 @@ async function tryParseStructuredSource(url: string, term?: string): Promise<Par
           // Track current company name across rows for carry-forward
           let currentCompany: string | null = null;
           
-          return lines.slice(1).map(line => {
+          return lines.slice(1).map((line, index) => {
             const cols = line.split(',').map(c => c.trim());
             
             // Parse age if available in CSV
@@ -321,6 +323,7 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
   const ageIdx = columnOrder.age ?? 4; // Age column is optional
   
   // Track the current company name across rows (for handling "↳" continuation symbol)
+  // IMPORTANT: We process rows in DOM order to preserve original_index for fill-down
   let currentCompany: string | null = null;
   
   for (let rowIdx = 0; rowIdx < trMatches.length; rowIdx++) {
@@ -533,7 +536,8 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
         location: location,
         apply_url: applyUrl,
         age_days: ageDays,
-        posted_at: postedAt
+        posted_at: postedAt,
+        original_index: rowIdx // Preserve DOM order for fill-down
       });
     } catch (error) {
       errors.push(`Table ${tableIndex}, Row ${rowIdx}: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -542,6 +546,70 @@ function parseHTMLTable(tableHtml: string, allowNullApplyUrl: boolean = false, t
   }
   
   return { rows, errors, skipped };
+}
+
+/**
+ * Fill-down company names based on original DOM order (original_index)
+ * This ensures ↳ symbols refer to the previous row in the original page order,
+ * not database order which can change due to upsert/sorting.
+ */
+function fillDownCompanyNames(rows: ParsedRow[]): ParsedRow[] {
+  if (rows.length === 0) return rows;
+  
+  // Sort by original_index to ensure DOM order
+  const sorted = [...rows].sort((a, b) => {
+    const idxA = a.original_index ?? 0;
+    const idxB = b.original_index ?? 0;
+    return idxA - idxB;
+  });
+  
+  // Track current company as we iterate in DOM order
+  let currentCompany: string | null = null;
+  
+  // Fill down company names
+  const filled = sorted.map(row => {
+    const raw = (row.company_name ?? "").trim();
+    
+    // Clean symbols
+    const cleaned = raw
+      .replaceAll("↳", "")
+      .replaceAll("└", "")
+      .replaceAll("→", "")
+      .trim();
+    
+    // Check if this is a continuation symbol
+    const isSameAsPrevious = 
+      !cleaned || 
+      cleaned === "" || 
+      cleaned.toLowerCase() === "unknown" ||
+      raw === "↳" ||
+      raw === "└" ||
+      raw === "→";
+    
+    // Determine company: use currentCompany if continuation, otherwise use cleaned name
+    let company: string;
+    if (isSameAsPrevious) {
+      // Use previous company name from DOM order
+      company = currentCompany ?? "Unknown";
+    } else {
+      // This is a real company name
+      company = cleaned;
+      // Only update the tracker if we got a real company
+      if (company) {
+        currentCompany = company;
+      }
+    }
+    
+    // IMPORTANT: never send null/empty company_name
+    const finalCompany = company ?? currentCompany ?? "Unknown";
+    
+    return {
+      ...row,
+      company_name: finalCompany
+    };
+  });
+  
+  return filled;
 }
 
 /**
@@ -716,8 +784,14 @@ serve(async (req) => {
         console.warn('⚠️ Parse errors:', allParseErrors.slice(0, 5)); // Log first 5 errors
       }
 
-      // De-duplicate active roles by apply_url
-      const uniqueActiveRows = deduplicateByApplyUrl(activeRows);
+      // Fill-down company names based on original DOM order BEFORE any reordering/upsert
+      // This ensures ↳ symbols refer to the previous row in the original page order
+      console.log('🔄 Filling down company names based on original DOM order...');
+      const filledRows = fillDownCompanyNames(activeRows);
+      console.log(`✅ Filled down company names for ${filledRows.length} rows`);
+      
+      // De-duplicate active roles by apply_url (AFTER fill-down)
+      const uniqueActiveRows = deduplicateByApplyUrl(filledRows);
       console.log(`🔍 Active roles: De-duplicated to ${uniqueActiveRows.length} unique rows`);
       parsedRows = uniqueActiveRows;
     }
