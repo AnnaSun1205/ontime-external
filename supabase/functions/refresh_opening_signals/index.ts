@@ -822,6 +822,13 @@ serve(async (req) => {
         
         if (!verification.isValid) {
           const conflictCount = verification.conflicts.length;
+          const first = verification.conflicts[0];
+          
+          // Log first conflict on single line for visibility
+          console.error(
+            `BAD_APPLY_URL=${first.apply_url} | COMPANIES=${first.companies.join(" | ")}`
+          );
+          
           console.error(`❌ VERIFICATION FAILED: Found ${conflictCount} apply_url(s) with multiple company_names:`);
           for (const conflict of verification.conflicts.slice(0, 10)) {
             console.error(`   apply_url: ${conflict.apply_url}`);
@@ -836,7 +843,19 @@ serve(async (req) => {
             }
           };
           
-          // DO NOT silently upsert conflicting data - throw error
+          // Return response with conflict before throwing (for observability)
+          return new Response(JSON.stringify({
+            ok: false,
+            error: "company_url_alignment_failed",
+            conflict: first,
+            conflict_count: conflictCount,
+            debug: debugInfo
+          }), { 
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          // DO NOT silently upsert conflicting data - throw error (for CI/alerting)
           throw new Error(
             `Data integrity violation: ${conflictCount} apply_url(s) have multiple company_names. ` +
             `This indicates a parsing or fill-down error. Check logs for details.`
@@ -942,6 +961,13 @@ serve(async (req) => {
       
       if (!verification.isValid) {
         const conflictCount = verification.conflicts.length;
+        const first = verification.conflicts[0];
+        
+        // Log first conflict on single line for visibility
+        console.error(
+          `BAD_APPLY_URL=${first.apply_url} | COMPANIES=${first.companies.join(" | ")}`
+        );
+        
         console.error(`❌ VERIFICATION FAILED: Found ${conflictCount} apply_url(s) with multiple company_names:`);
         for (const conflict of verification.conflicts.slice(0, 10)) { // Log first 10
           console.error(`   apply_url: ${conflict.apply_url}`);
@@ -960,7 +986,19 @@ serve(async (req) => {
           }
         };
         
-        // DO NOT silently upsert conflicting data - throw error
+        // Return response with conflict before throwing (for observability)
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "company_url_alignment_failed",
+          conflict: first,
+          conflict_count: conflictCount,
+          debug: debugInfo
+        }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        // DO NOT silently upsert conflicting data - throw error (for CI/alerting)
         throw new Error(
           `Data integrity violation: ${conflictCount} apply_url(s) have multiple company_names. ` +
           `This indicates a parsing or fill-down error. Check logs for details.`
@@ -995,6 +1033,13 @@ serve(async (req) => {
       
       if (!postDedupVerification.isValid) {
         const conflictCount = postDedupVerification.conflicts.length;
+        const first = postDedupVerification.conflicts[0];
+        
+        // Log first conflict on single line for visibility
+        console.error(
+          `BAD_APPLY_URL=${first.apply_url} | COMPANIES=${first.companies.join(" | ")}`
+        );
+        
         console.error(`❌ POST-DEDUP VERIFICATION FAILED: Found ${conflictCount} apply_url(s) with multiple company_names after deduplication:`);
         for (const conflict of postDedupVerification.conflicts.slice(0, 10)) {
           console.error(`   apply_url: ${conflict.apply_url}`);
@@ -1010,7 +1055,19 @@ serve(async (req) => {
           }
         };
         
-        // DO NOT silently upsert conflicting data - throw error
+        // Return response with conflict before throwing (for observability)
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "company_url_alignment_failed_after_dedup",
+          conflict: first,
+          conflict_count: conflictCount,
+          debug: debugInfo
+        }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        // DO NOT silently upsert conflicting data - throw error (for CI/alerting)
         throw new Error(
           `Data integrity violation after deduplication: ${conflictCount} apply_url(s) have multiple company_names. ` +
           `This indicates deduplication logic issue. Check logs for details.`
