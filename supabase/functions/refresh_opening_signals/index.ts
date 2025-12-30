@@ -1595,6 +1595,11 @@ serve(async (req) => {
     }
     
     console.log(`📊 Final sets: ${active_set.size} active URLs, ${inactive_set.size} inactive-only URLs`);
+    
+    // Ensure debugInfo.is_active is initialized
+    if (!debugInfo.is_active) {
+      debugInfo.is_active = {};
+    }
     debugInfo.is_active.final_active_set_size = active_set.size;
     debugInfo.is_active.final_inactive_set_size = inactive_set.size;
     
