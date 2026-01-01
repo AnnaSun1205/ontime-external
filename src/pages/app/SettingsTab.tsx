@@ -229,7 +229,7 @@ export default function SettingsTab() {
         </div>
         <div className="flex items-center justify-between py-2">
           <div>
-            <p className="font-medium">Quiet mode</p>
+            <Label>Quiet mode</Label>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
