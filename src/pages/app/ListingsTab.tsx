@@ -370,7 +370,7 @@ export default function ListingsTab() {
             "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
             countryFilter === "canada"
               ? "bg-foreground text-background"
-              : "text-muted-foreground/70 hover:text-muted-foreground"
+              : "bg-background/80 text-muted-foreground hover:bg-background"
           )}
         >
           Canada
@@ -381,7 +381,7 @@ export default function ListingsTab() {
             "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
             countryFilter === "us"
               ? "bg-foreground text-background"
-              : "text-muted-foreground/70 hover:text-muted-foreground"
+              : "bg-background/80 text-muted-foreground hover:bg-background"
           )}
         >
           US
@@ -400,7 +400,7 @@ export default function ListingsTab() {
                 ? tab.id === "new"
                   ? "bg-amber-100 text-amber-700"
                   : "bg-foreground text-background"
-                : "text-muted-foreground/70 hover:text-muted-foreground"
+                : "bg-background/80 text-muted-foreground hover:bg-background"
             )}
           >
             {tab.id === "new" && <Zap className="w-3.5 h-3.5" />}
