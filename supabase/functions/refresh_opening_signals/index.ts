@@ -767,28 +767,116 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if it's time to run (jitter-based scheduling)
+    // Atomic lock acquisition and schedule check
     const currentTime = new Date();
+    const requestId = crypto.randomUUID();
+    const lockDuration = 5 * 60 * 1000; // 5 minutes
+    const lockUntil = new Date(currentTime.getTime() + lockDuration);
+    
+    let lockAcquired = false;
+    let scheduleData: any = null;
+    
     try {
-      const { data: scheduleData, error: scheduleError } = await supabase
-        .from('refresh_schedule')
-        .select('next_run_at, last_run_at')
-        .eq('function_name', 'refresh_opening_signals')
-        .maybeSingle();
-
-      // If table doesn't exist or no schedule found, proceed with execution (first run)
-      if (!scheduleError && scheduleData?.next_run_at) {
-        const nextRunAt = new Date(scheduleData.next_run_at);
-        if (currentTime < nextRunAt) {
-          const waitMs = nextRunAt.getTime() - currentTime.getTime();
-          const waitMinutes = Math.round(waitMs / 60000);
-          console.log(`⏳ Not time to run yet. Next run in ${waitMinutes} minutes (at ${nextRunAt.toISOString()})`);
+      // Try to acquire lock atomically: only if (next_run_at is null OR now() >= next_run_at) 
+      // AND (locked_until is null OR locked_until < now())
+      const { data: lockResult, error: lockError } = await supabase
+        .rpc('acquire_refresh_lock', {
+          p_function_name: 'refresh_opening_signals',
+          p_request_id: requestId,
+          p_lock_until: lockUntil.toISOString()
+        });
+      
+      if (lockError) {
+        // Check if it's a "function doesn't exist" error (migration not run yet)
+        if (lockError.message?.includes('function') && lockError.message?.includes('does not exist') || 
+            lockError.code === '42883' || lockError.code === 'P0001') {
+          console.log('⚠️ acquire_refresh_lock function does not exist (migration not run) - using fallback logic');
+          // Fallback: use direct table access for first run
+          const { data: fallbackSchedule, error: fallbackError } = await supabase
+            .from('refresh_schedule')
+            .select('next_run_at, locked_until')
+            .eq('function_name', 'refresh_opening_signals')
+            .maybeSingle();
+          
+          if (fallbackError) {
+            // Table doesn't exist either - first run, proceed
+            if (fallbackError.message?.includes('does not exist') || fallbackError.code === '42P01') {
+              console.log('⚠️ Schedule table does not exist (first run) - proceeding with execution');
+              lockAcquired = true;
+            } else {
+              console.error('❌ Schedule read error:', fallbackError.message);
+              return new Response(
+                JSON.stringify({ 
+                  ok: true, 
+                  skipped: true,
+                  reason: 'schedule_read_error',
+                  error: fallbackError.message
+                }),
+                { 
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+            }
+          } else if (!fallbackSchedule || !fallbackSchedule.next_run_at || currentTime >= new Date(fallbackSchedule.next_run_at)) {
+            // Time to run - try to acquire lock manually
+            const { error: lockUpdateError } = await supabase
+              .from('refresh_schedule')
+              .update({
+                locked_until: lockUntil.toISOString(),
+                locked_by: requestId,
+                updated_at: currentTime.toISOString()
+              })
+              .eq('function_name', 'refresh_opening_signals')
+              .or(`locked_until.is.null,locked_until.lt.${currentTime.toISOString()}`);
+            
+            if (!lockUpdateError) {
+              lockAcquired = true;
+              console.log(`🔒 Lock acquired (fallback) by request ${requestId}`);
+            } else {
+              console.log('⏳ Could not acquire lock (fallback)');
+              return new Response(
+                JSON.stringify({ 
+                  ok: true, 
+                  skipped: true,
+                  reason: 'lock_failed_fallback'
+                }),
+                { 
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+            }
+          } else {
+            // Not time yet
+            const waitMinutes = Math.round((new Date(fallbackSchedule.next_run_at).getTime() - currentTime.getTime()) / 60000);
+            return new Response(
+              JSON.stringify({ 
+                ok: true, 
+                skipped: true,
+                reason: 'not_time_yet',
+                message: `Next run scheduled in ${waitMinutes} minutes`
+              }),
+              { 
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              }
+            );
+          }
+        } else if (lockError.message?.includes('does not exist') || lockError.message?.includes('relation') || lockError.code === '42P01') {
+          console.log('⚠️ Schedule table does not exist (first run) - proceeding with execution');
+          // Proceed with execution on first run
+          lockAcquired = true;
+        } else {
+          // Other errors - do NOT run heavy work
+          console.error('❌ Schedule read error (not first run):', lockError.message, lockError.code);
           return new Response(
             JSON.stringify({ 
               ok: true, 
               skipped: true,
-              message: `Next run scheduled in ${waitMinutes} minutes`,
-              next_run_at: nextRunAt.toISOString()
+              reason: 'schedule_read_error',
+              error: lockError.message,
+              code: lockError.code
             }),
             { 
               status: 200,
@@ -796,16 +884,181 @@ serve(async (req) => {
             }
           );
         }
-      } else if (scheduleError) {
-        // Table might not exist yet (first run) - log and continue
-        console.log('⚠️ Schedule table not found or error (first run?):', scheduleError.message);
-        console.log('   Proceeding with execution (will create schedule after completion)');
+      } else if (lockResult === false || lockResult === null) {
+        // Lock acquisition failed - another instance is running or not time yet
+        console.log('⏳ Lock acquisition failed - checking schedule...');
+        
+        // Check what the reason was by reading the schedule
+        const { data: checkData, error: checkError } = await supabase
+          .from('refresh_schedule')
+          .select('next_run_at, locked_until, locked_by')
+          .eq('function_name', 'refresh_opening_signals')
+          .maybeSingle();
+        
+        if (checkError) {
+          console.error('❌ Error reading schedule:', checkError.message);
+          return new Response(
+            JSON.stringify({ 
+              ok: true, 
+              skipped: true,
+              reason: 'schedule_read_error',
+              error: checkError.message
+            }),
+            { 
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        }
+        
+        if (checkData) {
+          const nextRunAt = checkData.next_run_at ? new Date(checkData.next_run_at) : null;
+          const lockedUntil = checkData.locked_until ? new Date(checkData.locked_until) : null;
+          
+          // Check if lock is expired (stuck lock)
+          if (lockedUntil && currentTime >= lockedUntil) {
+            console.log('⚠️ Found expired lock - clearing it and retrying...');
+            // Clear expired lock
+            await supabase
+              .from('refresh_schedule')
+              .update({
+                locked_until: null,
+                locked_by: null,
+                updated_at: currentTime.toISOString()
+              })
+              .eq('function_name', 'refresh_opening_signals');
+            
+            // Retry lock acquisition
+            const { data: retryResult, error: retryError } = await supabase
+              .rpc('acquire_refresh_lock', {
+                p_function_name: 'refresh_opening_signals',
+                p_request_id: requestId,
+                p_lock_until: lockUntil.toISOString()
+              });
+            
+            if (!retryError && retryResult === true) {
+              lockAcquired = true;
+              console.log(`🔒 Lock acquired after clearing expired lock (request ${requestId})`);
+            } else {
+              console.log('⏳ Still could not acquire lock after clearing expired lock');
+              return new Response(
+                JSON.stringify({ 
+                  ok: true, 
+                  skipped: true,
+                  reason: 'lock_failed_after_clear'
+                }),
+                { 
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' }
+                }
+              );
+            }
+          } else if (nextRunAt && currentTime < nextRunAt) {
+            // Not time yet
+            const waitMinutes = Math.round((nextRunAt.getTime() - currentTime.getTime()) / 60000);
+            console.log(`⏳ Not time to run yet. Next run in ${waitMinutes} minutes`);
+            return new Response(
+              JSON.stringify({ 
+                ok: true, 
+                skipped: true,
+                reason: 'not_time_yet',
+                message: `Next run scheduled in ${waitMinutes} minutes`,
+                next_run_at: nextRunAt.toISOString()
+              }),
+              { 
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              }
+            );
+          } else if (lockedUntil && currentTime < lockedUntil) {
+            // Lock is still valid - another instance is running
+            const lockMinutes = Math.round((lockedUntil.getTime() - currentTime.getTime()) / 60000);
+            console.log(`🔒 Another instance is running (locked by ${checkData.locked_by}, expires in ${lockMinutes} minutes)`);
+            return new Response(
+              JSON.stringify({ 
+                ok: true, 
+                skipped: true,
+                reason: 'locked',
+                message: `Another instance is running (locked by ${checkData.locked_by}, expires in ${lockMinutes} minutes)`,
+                locked_until: lockedUntil.toISOString(),
+                locked_by: checkData.locked_by
+              }),
+              { 
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+              }
+            );
+          } else {
+            // No clear reason - try to proceed anyway (edge case)
+            console.log('⚠️ Lock acquisition failed but no clear reason - proceeding anyway');
+            lockAcquired = true;
+          }
+        } else {
+          // No schedule data - first run, proceed
+          console.log('⚠️ No schedule data found - proceeding with execution (first run)');
+          lockAcquired = true;
+        }
+        
+        // If we still don't have a lock and haven't returned, skip
+        if (!lockAcquired) {
+          return new Response(
+            JSON.stringify({ 
+              ok: true, 
+              skipped: true,
+              reason: 'lock_failed',
+              message: 'Could not acquire lock for unknown reason'
+            }),
+            { 
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        }
+      } else {
+        // Lock acquired successfully
+        lockAcquired = true;
+        console.log(`🔒 Lock acquired by request ${requestId} (expires at ${lockUntil.toISOString()})`);
+        
+        // Fetch schedule data for reference
+        const { data: fetchedSchedule } = await supabase
+          .from('refresh_schedule')
+          .select('next_run_at, last_run_at')
+          .eq('function_name', 'refresh_opening_signals')
+          .maybeSingle();
+        
+        scheduleData = fetchedSchedule;
       }
     } catch (scheduleCheckError) {
-      // If schedule check fails, proceed anyway (graceful degradation)
+      // Unexpected error - do NOT run heavy work
       const errorMsg = scheduleCheckError instanceof Error ? scheduleCheckError.message : String(scheduleCheckError);
-      console.log('⚠️ Schedule check failed, proceeding with execution:', errorMsg);
-      console.log('   This is normal on first run if refresh_schedule table does not exist yet');
+      console.error('❌ Unexpected schedule check error:', errorMsg);
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          skipped: true,
+          reason: 'schedule_read_error',
+          error: errorMsg
+        }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Only proceed if lock was acquired
+    if (!lockAcquired) {
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          skipped: true,
+          reason: 'lock_not_acquired'
+        }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
     }
 
     // Step 1: Stale cleanup - mark listings inactive if not seen in 48 hours
@@ -998,8 +1251,8 @@ serve(async (req) => {
       });
     }
     
-    // Prepare records with first_seen_at for new rows
-    // Note: first_seen_at will be preserved by trigger for existing rows
+    // Prepare records - DO NOT include first_seen_at in upsert payload
+    // first_seen_at should only be set on INSERT, not UPDATE (preserved by DB trigger)
     // Preserve existing posted_at if it exists, otherwise use parsed value
     // Ensure posted_at and age_days are always written together
     const recordsToUpsert = activeRecords.map(record => {
@@ -1044,9 +1297,9 @@ serve(async (req) => {
         finalPostedAt = new Date().toISOString();
       }
       
+      // DO NOT include first_seen_at - it will be set by DB trigger on INSERT only
       return {
         ...record,
-        first_seen_at: now,
         // Always set both posted_at and age_days together
         posted_at: finalPostedAt,
         age_days: finalAgeDays
@@ -1057,6 +1310,7 @@ serve(async (req) => {
     // Supabase will handle conflict resolution via listing_hash unique constraint
     // On conflict, ALL fields in recordsToUpsert will be updated, including role_title (sanitized)
     // posted_at is preserved if it already exists (only set when NULL)
+    // first_seen_at is NOT in recordsToUpsert - it will be preserved by DB trigger on UPDATE
     const { data: upsertedData, error: upsertError } = await supabase
       .from('opening_signals')
       .upsert(recordsToUpsert, {
@@ -1087,7 +1341,7 @@ serve(async (req) => {
     debugInfo.duration_ms = duration;
     console.log('🎉 Script completed successfully!');
 
-    // Schedule next run with jitter (10-15 minutes)
+    // Release lock and schedule next run with jitter (10-15 minutes)
     const nextRunAt = getNextScheduledTime(false);
     await supabase
       .from('refresh_schedule')
@@ -1096,13 +1350,15 @@ serve(async (req) => {
         last_run_at: new Date().toISOString(),
         next_run_at: nextRunAt.toISOString(),
         last_status: 'success',
+        locked_until: null, // Release lock
+        locked_by: null,    // Release lock
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'function_name'
       });
     
     const waitMinutes = Math.round((nextRunAt.getTime() - Date.now()) / 60000);
-    console.log(`⏰ Scheduled next run: ${nextRunAt.toISOString()} (in ${waitMinutes} minutes)`);
+    console.log(`🔓 Lock released. Scheduled next run: ${nextRunAt.toISOString()} (in ${waitMinutes} minutes)`);
 
     return new Response(
       JSON.stringify({ 
@@ -1121,11 +1377,27 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ Error:', error);
-    debugInfo.error = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    const errorCode = error && typeof error === 'object' && 'code' in error ? (error as any).code : undefined;
+    
+    console.error('❌ Error:', errorMessage);
+    if (errorStack) {
+      console.error('Stack trace:', errorStack);
+    }
+    if (errorCode) {
+      console.error('Error code:', errorCode);
+    }
+    if (error && typeof error === 'object') {
+      console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    }
+    
+    debugInfo.error = errorMessage;
+    debugInfo.error_stack = errorStack;
+    debugInfo.error_code = errorCode;
     debugInfo.duration_ms = Date.now() - startTime;
     
-    // On failure, schedule next run with longer backoff (20-40 minutes)
+    // Release lock and schedule next run with longer backoff (20-40 minutes)
     if (supabaseUrl && supabaseServiceKey) {
       try {
         const supabaseForSchedule = createClient(supabaseUrl, supabaseServiceKey);
@@ -1137,23 +1409,41 @@ serve(async (req) => {
             last_run_at: new Date().toISOString(),
             next_run_at: nextRunAt.toISOString(),
             last_status: 'failed',
+            locked_until: null, // Release lock
+            locked_by: null,    // Release lock
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'function_name'
           });
         
         const waitMinutes = Math.round((nextRunAt.getTime() - Date.now()) / 60000);
-        console.log(`⏰ Scheduled next run after failure: ${nextRunAt.toISOString()} (backoff: ${waitMinutes} minutes)`);
+        console.log(`🔓 Lock released. Scheduled next run after failure: ${nextRunAt.toISOString()} (backoff: ${waitMinutes} minutes)`);
         debugInfo.next_run_at = nextRunAt.toISOString();
       } catch (scheduleError) {
-        console.error('Failed to update schedule:', scheduleError);
+        console.error('Failed to update schedule and release lock:', scheduleError);
+        // Try to at least release the lock
+        try {
+          const supabaseForLock = createClient(supabaseUrl, supabaseServiceKey);
+          await supabaseForLock
+            .from('refresh_schedule')
+            .update({
+              locked_until: null,
+              locked_by: null
+            })
+            .eq('function_name', 'refresh_opening_signals');
+          console.log('🔓 Lock released manually after schedule update error');
+        } catch (lockReleaseError) {
+          console.error('Failed to release lock:', lockReleaseError);
+        }
       }
     }
     
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
+        error_stack: errorStack,
+        error_code: error && typeof error === 'object' && 'code' in error ? (error as any).code : undefined,
         inserted: 0,
         updated: 0,
         deactivated: debugInfo.stale_cleanup?.deactivated || 0,

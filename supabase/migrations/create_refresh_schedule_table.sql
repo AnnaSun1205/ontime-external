@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS public.refresh_schedule (
   next_run_at timestamptz NOT NULL,
   last_run_at timestamptz,
   last_status text CHECK (last_status IN ('success', 'failed', 'skipped', 'pending')),
+  locked_until timestamptz,
+  locked_by text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
