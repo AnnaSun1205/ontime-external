@@ -11,18 +11,47 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        // Get session from URL hash (OAuth callback)
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Check if there's an auth code in the URL (OAuth callback)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const queryParams = new URLSearchParams(window.location.search);
         
-        if (sessionError) {
-          console.error("Session error:", sessionError);
-          navigate("/login?error=auth_failed");
-          return;
+        const accessToken = hashParams.get("access_token");
+        const code = queryParams.get("code");
+        
+        let session = null;
+        
+        if (code) {
+          // Exchange code for session (PKCE flow)
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error("Code exchange error:", error);
+            navigate("/login?error=auth_failed", { replace: true });
+            return;
+          }
+          session = data.session;
+        } else if (accessToken) {
+          // Implicit flow - session should be set automatically
+          const { data, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error("Session error:", error);
+            navigate("/login?error=auth_failed", { replace: true });
+            return;
+          }
+          session = data.session;
+        } else {
+          // No auth params, try to get existing session
+          const { data, error } = await supabase.auth.getSession();
+          if (error || !data.session) {
+            console.error("No session found");
+            navigate("/login?error=no_session", { replace: true });
+            return;
+          }
+          session = data.session;
         }
 
         if (!session?.user) {
-          console.error("No session found");
-          navigate("/login?error=no_session");
+          console.error("No user in session");
+          navigate("/login?error=no_session", { replace: true });
           return;
         }
 
@@ -63,7 +92,7 @@ export default function AuthCallback() {
         }
       } catch (err) {
         console.error("Auth callback error:", err);
-        navigate("/login?error=callback_failed");
+        navigate("/login?error=callback_failed", { replace: true });
       }
     };
 
