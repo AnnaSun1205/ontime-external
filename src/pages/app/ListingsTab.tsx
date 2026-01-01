@@ -363,7 +363,7 @@ export default function ListingsTab() {
 
       {/* Country filter */}
       {/* Country filter */}
-      <div className="inline-flex gap-0 p-1 mb-4 bg-muted/50 rounded-lg">
+      <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg">
         <button
           onClick={() => setCountryFilter("canada")}
           className={cn(
@@ -390,7 +390,7 @@ export default function ListingsTab() {
 
       {/* Time tabs */}
       <div className="flex items-center gap-4 mb-6 flex-wrap">
-        <div className="inline-flex gap-0 p-1 bg-muted/50 rounded-lg">
+        <div className="inline-flex gap-0 p-1 bg-muted rounded-lg">
           {tabs.map((tab) => (
             <button
               key={tab.id}
