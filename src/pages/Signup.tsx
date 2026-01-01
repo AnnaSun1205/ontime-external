@@ -28,46 +28,10 @@ export default function Signup() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [errors, setErrors] = useState<{ email?: string; password?: string; confirmPassword?: string }>({});
 
-  // Check if user is already logged in
+  // No auto-redirect on mount - user must use "Back home" or complete signup
   useEffect(() => {
-    let cancelled = false;
-
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        // Check onboarding status
-        const { data: preferences } = await supabase
-          .from("user_preferences")
-          .select("has_onboarded, selected_companies")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-
-        if (preferences?.has_onboarded && preferences?.selected_companies?.length > 0) {
-          navigate("/app", { replace: true });
-        } else {
-          navigate("/onboarding", { replace: true });
-        }
-      } else {
-        setCheckingAuth(false);
-      }
-    };
-
-    // Listener first (prevents missing OAuth sign-in events)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        setTimeout(() => {
-          if (!cancelled) checkAuth();
-        }, 0);
-      }
-    });
-
-    checkAuth();
-
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
+    setCheckingAuth(false);
+  }, []);
 
   const handleGoogleSignIn = async () => {
     setLoading("google");

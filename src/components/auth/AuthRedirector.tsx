@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/signup"]);
+// Only the landing page auto-redirects logged-in users
+// Login/Signup pages do NOT auto-redirect - user must use "Back home" or complete auth
+const PUBLIC_PATHS = new Set(["/"]);
 
 export function AuthRedirector() {
   const navigate = useNavigate();
