@@ -554,7 +554,17 @@ function deduplicateByApplyUrl(rows: ParsedRow[]): ParsedRow[] {
   return unique;
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
   const startTime = Date.now();
   const debugInfo: any = {
     source_fetch: { status: 'pending', url: GITHUB_URL },
@@ -563,10 +573,24 @@ serve(async (req) => {
     stale_cleanup: { deactivated: 0 }
   };
   
+  // Get environment variables
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  
+  // Authentication check - require Bearer token matching service role key
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || authHeader !== `Bearer ${supabaseServiceKey}`) {
+    console.error('Unauthorized: Missing or invalid Authorization header');
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { 
+        status: 401, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
+  }
+  
   try {
-    // Get Supabase client with service role key
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
     if (!supabaseUrl || !supabaseServiceKey) {
       const error = 'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables';
