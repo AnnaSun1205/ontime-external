@@ -325,6 +325,15 @@ export default function Login() {
           <Link to="/terms" className="underline">Terms</Link> and{" "}
           <Link to="/privacy" className="underline">Privacy Policy</Link>.
         </p>
+
+        <div className="text-center mt-6">
+          <Link
+            to="/"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Back home
+          </Link>
+        </div>
       </div>
     </div>
   );
