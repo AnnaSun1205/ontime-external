@@ -363,14 +363,14 @@ export default function ListingsTab() {
 
       {/* Country filter */}
       {/* Country filter */}
-      <div className="flex gap-1 mb-4">
+      <div className="inline-flex gap-0 p-1 mb-4 bg-muted/50 rounded-lg">
         <button
           onClick={() => setCountryFilter("canada")}
           className={cn(
             "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
             countryFilter === "canada"
               ? "bg-foreground text-background"
-              : "bg-primary/5 text-muted-foreground hover:bg-primary/10"
+              : "text-muted-foreground hover:text-foreground"
           )}
         >
           Canada
@@ -381,7 +381,7 @@ export default function ListingsTab() {
             "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
             countryFilter === "us"
               ? "bg-foreground text-background"
-              : "bg-primary/5 text-muted-foreground hover:bg-primary/10"
+              : "text-muted-foreground hover:text-foreground"
           )}
         >
           US
@@ -389,24 +389,26 @@ export default function ListingsTab() {
       </div>
 
       {/* Time tabs */}
-      <div className="flex items-center gap-2 mb-6 flex-wrap">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-              activeTab === tab.id
-                ? tab.id === "new"
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-foreground text-background"
-                : "bg-primary/5 text-muted-foreground hover:bg-primary/10"
-            )}
-          >
-            {tab.id === "new" && <Zap className="w-3.5 h-3.5" />}
-            {tab.label} ({tab.count})
-          </button>
-        ))}
+      <div className="flex items-center gap-4 mb-6 flex-wrap">
+        <div className="inline-flex gap-0 p-1 bg-muted/50 rounded-lg">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                activeTab === tab.id
+                  ? tab.id === "new"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab.id === "new" && <Zap className="w-3.5 h-3.5" />}
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
 
         {/* Mark all as seen button - always visible but disabled when no new listings */}
         <button
