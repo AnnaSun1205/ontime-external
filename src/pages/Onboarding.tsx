@@ -9,7 +9,10 @@ import { cn } from "@/lib/utils";
 import { Check, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
 
+// Email validation schema
+const emailSchema = z.string().email("Invalid email format").max(255, "Email too long");
 const STEPS = [
   { title: "Season & Region", description: "When and where are you recruiting?" },
   { title: "Roles", description: "What positions interest you?" },
@@ -115,8 +118,11 @@ export default function Onboarding() {
         return selectedRoles.length > 0;
       case 2:
         return selectedCompanies.length > 0 && selectedCompanies.length <= 15;
-      case 3:
-        return email;
+      case 3: {
+        // Validate email format using zod
+        const result = emailSchema.safeParse(email);
+        return result.success;
+      }
       case 4:
         return true;
       default:
@@ -230,7 +236,17 @@ export default function Onboarding() {
     }
 
     try {
-      // 1. Save user preferences
+      // Validate array lengths to prevent abuse
+      if (selectedCompanies.length > 100) {
+        toast({
+          title: "Too many companies",
+          description: "Maximum 100 companies allowed",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      // 1. Save user preferences (email is read from auth.users, not stored here)
       const { error: prefError } = await supabase
         .from("user_preferences")
         .upsert({
@@ -239,7 +255,6 @@ export default function Onboarding() {
           selected_regions: selectedRegions,
           selected_roles: selectedRoles,
           selected_companies: selectedCompanies,
-          email: email,
           quiet_mode: quietMode,
           has_onboarded: true,
         }, { onConflict: "user_id" });

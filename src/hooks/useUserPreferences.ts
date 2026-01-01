@@ -9,7 +9,6 @@ export interface UserPreferences {
   selected_regions: string[];
   selected_roles: string[];
   selected_companies: string[];
-  email: string;
   quiet_mode: boolean;
 }
 
@@ -18,7 +17,6 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   selected_regions: [],
   selected_roles: [],
   selected_companies: [],
-  email: "",
   quiet_mode: true,
 };
 
@@ -28,7 +26,6 @@ const MOCK_PREFERENCES: UserPreferences = {
   selected_regions: ["US", "Remote"],
   selected_roles: ["SWE", "PM", "Data"],
   selected_companies: ["Google", "Meta", "Amazon", "Apple", "Microsoft", "Stripe", "Goldman Sachs", "Jane Street", "Palantir", "NVIDIA"],
-  email: "test@example.com",
   quiet_mode: false,
 };
 
@@ -83,7 +80,6 @@ export function useUserPreferences() {
             selected_regions: data.selected_regions || [],
             selected_roles: data.selected_roles || [],
             selected_companies: data.selected_companies || [],
-            email: data.email || "",
             quiet_mode: data.quiet_mode ?? true,
           });
         }
@@ -115,7 +111,6 @@ export function useUserPreferences() {
         selected_regions: newPreferences.selected_regions ?? preferences.selected_regions,
         selected_roles: newPreferences.selected_roles ?? preferences.selected_roles,
         selected_companies: newPreferences.selected_companies ?? preferences.selected_companies,
-        email: newPreferences.email ?? preferences.email,
         quiet_mode: newPreferences.quiet_mode ?? preferences.quiet_mode,
       };
 
@@ -142,7 +137,6 @@ export function useUserPreferences() {
         selected_regions: data.selected_regions || [],
         selected_roles: data.selected_roles || [],
         selected_companies: data.selected_companies || [],
-        email: data.email || "",
         quiet_mode: data.quiet_mode ?? true,
       });
 
