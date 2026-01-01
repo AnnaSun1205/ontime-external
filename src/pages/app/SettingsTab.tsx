@@ -224,6 +224,7 @@ export default function SettingsTab() {
             onChange={(e) => setEmail(e.target.value)}
             placeholder={email ? undefined : "Not signed in"}
             disabled={!email}
+            style={{ backgroundColor: 'white' }}
           />
         </div>
         <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
@@ -233,6 +234,7 @@ export default function SettingsTab() {
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
         </div>
+        
         <div className="space-y-2">
           <Label>Email window</Label>
           <p className="text-sm text-muted-foreground">Mon–Fri, 8am–5pm local time</p>
@@ -280,7 +282,7 @@ export default function SettingsTab() {
         <div className="space-y-2">
           <Label>How early do you want prep alerts?</Label>
           <Select value={prepTiming} onValueChange={setPrepTiming}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full" style={{ backgroundColor: 'white' }}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
