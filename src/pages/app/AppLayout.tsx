@@ -19,11 +19,31 @@ export default function AppLayout() {
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
 
-  // AUTH DISABLED FOR UI TESTING - Re-enable when ready
+  // Protect /app routes: if user is not authenticated, redirect to /login
   useEffect(() => {
-    // Skip auth check for now
-    setLoading(false);
-  }, []);
+    let cancelled = false;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      if (!session?.user) {
+        navigate("/login", { replace: true });
+      } else {
+        if (!cancelled) setLoading(false);
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) {
+        navigate("/login", { replace: true });
+      } else {
+        if (!cancelled) setLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   const handleSignOut = async () => {
     setSigningOut(true);

@@ -35,6 +35,7 @@ export default function Signup() {
 
   const handleGoogleSignIn = async () => {
     setLoading("google");
+    sessionStorage.setItem("ontime-auth-in-progress", "1");
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
@@ -47,10 +48,12 @@ export default function Signup() {
         },
       });
       if (error) {
+        sessionStorage.removeItem("ontime-auth-in-progress");
         toast.error(error.message || "Failed to sign up with Google");
         setLoading(null);
       }
     } catch (err) {
+      sessionStorage.removeItem("ontime-auth-in-progress");
       toast.error("Failed to sign up with Google. Please try again.");
       setLoading(null);
     }
@@ -58,6 +61,7 @@ export default function Signup() {
 
   const handleMicrosoftSignIn = async () => {
     setLoading("microsoft");
+    sessionStorage.setItem("ontime-auth-in-progress", "1");
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "azure",
@@ -67,10 +71,12 @@ export default function Signup() {
         },
       });
       if (error) {
+        sessionStorage.removeItem("ontime-auth-in-progress");
         toast.error(error.message || "Failed to sign up with Microsoft");
         setLoading(null);
       }
     } catch (err) {
+      sessionStorage.removeItem("ontime-auth-in-progress");
       toast.error("Failed to sign up with Microsoft. Please try again.");
       setLoading(null);
     }
