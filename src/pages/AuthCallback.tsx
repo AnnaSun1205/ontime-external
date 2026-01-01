@@ -57,15 +57,33 @@ export default function AuthCallback() {
 
         setStatus("Checking your account...");
 
-        // Check if user has completed onboarding
-        const { data: preferences, error: prefError } = await supabase
-          .from("user_preferences")
-          .select("has_onboarded, selected_companies")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-
-        if (prefError) {
-          console.error("Error checking preferences:", prefError);
+        // Wait a moment for the database trigger to create user_preferences for new users
+        // Then retry a few times if needed
+        let preferences = null;
+        let retries = 0;
+        const maxRetries = 3;
+        
+        while (retries < maxRetries) {
+          const { data, error } = await supabase
+            .from("user_preferences")
+            .select("has_onboarded, selected_companies")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+          
+          if (error) {
+            console.error("Error checking preferences:", error);
+          }
+          
+          if (data) {
+            preferences = data;
+            break;
+          }
+          
+          // Wait before retrying (new user - trigger might not have completed)
+          retries++;
+          if (retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
         }
 
         // Update last login and auth provider
@@ -87,6 +105,7 @@ export default function AuthCallback() {
           setStatus("Loading your dashboard...");
           navigate("/app", { replace: true });
         } else {
+          // New user or not onboarded - go to onboarding
           setStatus("Setting up your account...");
           navigate("/onboarding", { replace: true });
         }
