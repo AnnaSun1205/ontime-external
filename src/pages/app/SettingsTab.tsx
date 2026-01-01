@@ -218,7 +218,7 @@ export default function SettingsTab() {
       <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
         <h2 className="font-semibold text-lg">Email settings</h2>
         <div className="space-y-2">
-          <Label>Email address</Label>
+          <p className="font-medium">Email address</p>
           <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-input bg-background">
             <Lock className="w-4 h-4 text-muted-foreground shrink-0" />
             <span className="text-sm text-foreground flex-1">
@@ -229,13 +229,13 @@ export default function SettingsTab() {
         </div>
         <div className="flex items-center justify-between py-2">
           <div className={`transition-opacity duration-200 ease-in-out ${quietMode ? 'opacity-100' : 'opacity-55'}`}>
-            <Label>Quiet mode</Label>
+            <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
         </div>
         <div className="space-y-2">
-          <Label>Email window</Label>
+          <p className="font-medium">Email window</p>
           <p className="text-sm text-muted-foreground">Mon–Fri, 8am–5pm local time</p>
         </div>
       </div>
