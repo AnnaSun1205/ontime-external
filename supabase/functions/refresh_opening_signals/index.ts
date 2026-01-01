@@ -10,6 +10,30 @@ const ALTERNATIVE_SOURCES = [
   'https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/master/data.yaml',
 ];
 
+// Jitter configuration
+const MIN_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const MAX_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const MIN_BACKOFF_MS = 20 * 60 * 1000; // 20 minutes (on failure)
+const MAX_BACKOFF_MS = 40 * 60 * 1000; // 40 minutes (on failure)
+
+/**
+ * Generates a random delay in milliseconds between min and max
+ */
+function randomDelay(minMs: number, maxMs: number): number {
+  return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+}
+
+/**
+ * Gets the next scheduled execution time with jitter
+ */
+function getNextScheduledTime(isFailure: boolean = false): Date {
+  const now = Date.now();
+  const delay = isFailure 
+    ? randomDelay(MIN_BACKOFF_MS, MAX_BACKOFF_MS)
+    : randomDelay(MIN_INTERVAL_MS, MAX_INTERVAL_MS);
+  return new Date(now + delay);
+}
+
 interface ParsedRow {
   company_name: string;
   role_title: string;
@@ -579,15 +603,148 @@ serve(async (req) => {
   
   // Authentication check - require Bearer token matching service role key
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader || authHeader !== `Bearer ${supabaseServiceKey}`) {
-    console.error('Unauthorized: Missing or invalid Authorization header');
+  
+  // Check if service key is configured
+  if (!supabaseServiceKey) {
+    console.error('❌ SUPABASE_SERVICE_ROLE_KEY environment variable is not set');
     return new Response(
-      JSON.stringify({ error: 'Unauthorized' }),
+      JSON.stringify({ 
+        error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY not set',
+        hint: 'Please set SUPABASE_SERVICE_ROLE_KEY in Edge Function environment variables'
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
+  }
+  
+  // Validate Authorization header
+  if (!authHeader) {
+    const allHeaders = Object.fromEntries(req.headers.entries());
+    console.error('❌ Unauthorized: Missing Authorization header');
+    console.error('   All request headers:', JSON.stringify(allHeaders, null, 2));
+    console.error('   Available headers:', Object.keys(allHeaders).join(', '));
+    return new Response(
+      JSON.stringify({ 
+        error: 'Unauthorized: Missing Authorization header',
+        hint: 'Include Authorization: Bearer <SERVICE_ROLE_KEY> in request headers',
+        available_headers: Object.keys(allHeaders),
+        all_headers: allHeaders
+      }),
       { 
         status: 401, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
+  }
+  
+  // Normalize header (trim whitespace)
+  const normalizedHeader = authHeader.trim();
+  const expectedHeader = `Bearer ${supabaseServiceKey}`;
+  
+  // Check if it's a JWT token (starts with "Bearer eyJ" which is base64 for JWT header)
+  const isJWT = normalizedHeader.startsWith('Bearer eyJ');
+  
+  if (isJWT) {
+    // If it's a JWT, check if it's a service role JWT (from cron jobs)
+    // Service role JWTs have role: "service_role" in the payload
+    try {
+      const token = normalizedHeader.replace('Bearer ', '');
+      const parts = token.split('.');
+      
+      if (parts.length === 3) {
+        // Decode JWT payload (base64url)
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        const role = payload.role;
+        
+        console.log(`🔍 JWT detected | Role: ${role} | Iss: ${payload.iss || 'unknown'}`);
+        
+        // Allow service_role JWTs (from cron jobs)
+        if (role === 'service_role') {
+          console.log('✅ Authorization validated: Service role JWT token');
+          // Allow execution - this is a service role JWT
+        } else {
+          // For user JWTs, validate them
+          const tempClient = createClient(supabaseUrl || '', supabaseServiceKey);
+          const { data: { user }, error: jwtError } = await tempClient.auth.getUser(token);
+          
+          if (jwtError || !user) {
+            const errorMsg = jwtError?.message || 'No user found';
+            const errorCode = jwtError?.status || 'unknown';
+            console.error(`❌ Unauthorized: Invalid user JWT token | Error: ${errorMsg} | Code: ${errorCode}`);
+            return new Response(
+              JSON.stringify({ 
+                error: 'Unauthorized: Invalid JWT token',
+                hint: 'JWT token validation failed. Use service role key for cron jobs: Bearer <SERVICE_ROLE_KEY>',
+                jwt_error: errorMsg,
+                jwt_error_code: errorCode
+              }),
+              { 
+                status: 401, 
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+              }
+            );
+          }
+          
+          console.log(`✅ Authorization validated: User JWT token for user ${user.id}`);
+        }
+      } else {
+        throw new Error('Invalid JWT format');
+      }
+    } catch (jwtValidationError) {
+      const errorMsg = jwtValidationError instanceof Error ? jwtValidationError.message : String(jwtValidationError);
+      console.error(`❌ JWT validation exception: ${errorMsg}`);
+      console.error(`   Exception details:`, jwtValidationError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Unauthorized: JWT validation failed',
+          hint: 'Use service role key for cron jobs: Bearer <SERVICE_ROLE_KEY>',
+          exception: errorMsg
+        }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+  } else if (normalizedHeader !== expectedHeader) {
+    // Not a JWT and doesn't match service role key
+    const receivedPreview = normalizedHeader.length > 0 
+      ? normalizedHeader.substring(0, 50) + (normalizedHeader.length > 50 ? '...' : '')
+      : '(empty)';
+    const expectedPreview = expectedHeader.substring(0, 50) + '...';
+    
+    // Check diagnostic info
+    const hasBearer = normalizedHeader.startsWith('Bearer ');
+    
+    // Single comprehensive error log
+    console.error(`❌ Unauthorized: Invalid Authorization header | Received: "${receivedPreview}" (len=${normalizedHeader.length}) | Expected: "${expectedPreview}" (len=${expectedHeader.length}) | HasBearer=${hasBearer} | IsJWT=${isJWT} | HeadersMatch=${normalizedHeader === expectedHeader}`);
+    
+    // Additional specific warnings
+    if (!hasBearer) {
+      console.error('⚠️ Missing "Bearer " prefix in Authorization header');
+    }
+    
+    return new Response(
+      JSON.stringify({ 
+        error: 'Unauthorized: Invalid Authorization header',
+        hint: 'Authorization header must be: Bearer <SERVICE_ROLE_KEY> or valid JWT token',
+        received_preview: receivedPreview,
+        received_length: normalizedHeader.length,
+        expected_preview: expectedPreview,
+        expected_length: expectedHeader.length,
+        has_bearer_prefix: hasBearer,
+        is_jwt: isJWT
+      }),
+      { 
+        status: 401, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
+  } else {
+    // Service role key matches
+    console.log('✅ Authorization header validated successfully (service role key)');
   }
   
   try {
@@ -609,6 +766,47 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Check if it's time to run (jitter-based scheduling)
+    const currentTime = new Date();
+    try {
+      const { data: scheduleData, error: scheduleError } = await supabase
+        .from('refresh_schedule')
+        .select('next_run_at, last_run_at')
+        .eq('function_name', 'refresh_opening_signals')
+        .maybeSingle();
+
+      // If table doesn't exist or no schedule found, proceed with execution (first run)
+      if (!scheduleError && scheduleData?.next_run_at) {
+        const nextRunAt = new Date(scheduleData.next_run_at);
+        if (currentTime < nextRunAt) {
+          const waitMs = nextRunAt.getTime() - currentTime.getTime();
+          const waitMinutes = Math.round(waitMs / 60000);
+          console.log(`⏳ Not time to run yet. Next run in ${waitMinutes} minutes (at ${nextRunAt.toISOString()})`);
+          return new Response(
+            JSON.stringify({ 
+              ok: true, 
+              skipped: true,
+              message: `Next run scheduled in ${waitMinutes} minutes`,
+              next_run_at: nextRunAt.toISOString()
+            }),
+            { 
+              status: 200,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+        }
+      } else if (scheduleError) {
+        // Table might not exist yet (first run) - log and continue
+        console.log('⚠️ Schedule table not found or error (first run?):', scheduleError.message);
+        console.log('   Proceeding with execution (will create schedule after completion)');
+      }
+    } catch (scheduleCheckError) {
+      // If schedule check fails, proceed anyway (graceful degradation)
+      const errorMsg = scheduleCheckError instanceof Error ? scheduleCheckError.message : String(scheduleCheckError);
+      console.log('⚠️ Schedule check failed, proceeding with execution:', errorMsg);
+      console.log('   This is normal on first run if refresh_schedule table does not exist yet');
+    }
 
     // Step 1: Stale cleanup - mark listings inactive if not seen in 48 hours
     console.log('🧹 Running stale cleanup (marking listings inactive if last_seen_at < 48 hours)...');
@@ -889,6 +1087,23 @@ serve(async (req) => {
     debugInfo.duration_ms = duration;
     console.log('🎉 Script completed successfully!');
 
+    // Schedule next run with jitter (10-15 minutes)
+    const nextRunAt = getNextScheduledTime(false);
+    await supabase
+      .from('refresh_schedule')
+      .upsert({
+        function_name: 'refresh_opening_signals',
+        last_run_at: new Date().toISOString(),
+        next_run_at: nextRunAt.toISOString(),
+        last_status: 'success',
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'function_name'
+      });
+    
+    const waitMinutes = Math.round((nextRunAt.getTime() - Date.now()) / 60000);
+    console.log(`⏰ Scheduled next run: ${nextRunAt.toISOString()} (in ${waitMinutes} minutes)`);
+
     return new Response(
       JSON.stringify({ 
         ok: true, 
@@ -896,6 +1111,7 @@ serve(async (req) => {
         updated,
         deactivated,
         total: totalUpserted,
+        next_run_at: nextRunAt.toISOString(),
         debug: debugInfo
       }),
       { 
@@ -908,13 +1124,40 @@ serve(async (req) => {
     console.error('❌ Error:', error);
     debugInfo.error = error instanceof Error ? error.message : 'Unknown error';
     debugInfo.duration_ms = Date.now() - startTime;
+    
+    // On failure, schedule next run with longer backoff (20-40 minutes)
+    if (supabaseUrl && supabaseServiceKey) {
+      try {
+        const supabaseForSchedule = createClient(supabaseUrl, supabaseServiceKey);
+        const nextRunAt = getNextScheduledTime(true);
+        await supabaseForSchedule
+          .from('refresh_schedule')
+          .upsert({
+            function_name: 'refresh_opening_signals',
+            last_run_at: new Date().toISOString(),
+            next_run_at: nextRunAt.toISOString(),
+            last_status: 'failed',
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'function_name'
+          });
+        
+        const waitMinutes = Math.round((nextRunAt.getTime() - Date.now()) / 60000);
+        console.log(`⏰ Scheduled next run after failure: ${nextRunAt.toISOString()} (backoff: ${waitMinutes} minutes)`);
+        debugInfo.next_run_at = nextRunAt.toISOString();
+      } catch (scheduleError) {
+        console.error('Failed to update schedule:', scheduleError);
+      }
+    }
+    
     return new Response(
       JSON.stringify({ 
         ok: false, 
         error: error instanceof Error ? error.message : 'Unknown error',
         inserted: 0,
         updated: 0,
-        deactivated: debugInfo.stale_cleanup.deactivated || 0,
+        deactivated: debugInfo.stale_cleanup?.deactivated || 0,
+        next_run_at: debugInfo.next_run_at,
         debug: debugInfo
       }),
       { 
