@@ -30,6 +30,8 @@ export default function Signup() {
 
   // Check if user is already logged in
   useEffect(() => {
+    let cancelled = false;
+
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
@@ -49,7 +51,22 @@ export default function Signup() {
         setCheckingAuth(false);
       }
     };
+
+    // Listener first (prevents missing OAuth sign-in events)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        setTimeout(() => {
+          if (!cancelled) checkAuth();
+        }, 0);
+      }
+    });
+
     checkAuth();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const handleGoogleSignIn = async () => {
