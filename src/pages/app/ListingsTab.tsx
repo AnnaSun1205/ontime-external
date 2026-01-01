@@ -388,11 +388,11 @@ export default function ListingsTab() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors",
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
               activeTab === tab.id
                 ? tab.id === "new"
                   ? "bg-amber-100 text-amber-700"
-                  : "bg-primary/10 text-primary"
+                  : "bg-foreground text-background"
                 : "text-muted-foreground hover:bg-muted"
             )}
           >
