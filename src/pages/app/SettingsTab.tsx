@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Trash2, Globe, Search } from "lucide-react";
+import { Download, Trash2, Globe, Search, Lock } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -219,14 +219,13 @@ export default function SettingsTab() {
         <h2 className="font-semibold text-lg">Email settings</h2>
         <div className="space-y-2">
           <Label>Email address</Label>
-          <Input 
-            type="email" 
-            value={email} 
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={email ? undefined : "Not signed in"}
-            disabled={!email}
-            className="!bg-white"
-          />
+          <div className="flex items-center gap-2 px-3 py-2 rounded-md border border-input bg-background">
+            <Lock className="w-4 h-4 text-muted-foreground shrink-0" />
+            <span className="text-sm text-foreground flex-1">
+              {email || "Not signed in"}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">Your login email (cannot be changed)</p>
         </div>
         <div className="flex items-center justify-between py-2">
           <div>
