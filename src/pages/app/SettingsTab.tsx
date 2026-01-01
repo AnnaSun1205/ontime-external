@@ -228,7 +228,7 @@ export default function SettingsTab() {
           <p className="text-sm text-muted-foreground">Your login email (cannot be changed)</p>
         </div>
         <div className="flex items-center justify-between py-2">
-          <div>
+          <div className={`transition-opacity duration-200 ease-in-out ${quietMode ? 'opacity-100' : 'opacity-55'}`}>
             <Label>Quiet mode</Label>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
@@ -245,28 +245,28 @@ export default function SettingsTab() {
         <h2 className="font-semibold text-lg">Notification preferences</h2>
         <div className="space-y-3">
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-200 ease-in-out ${prepReminders ? 'opacity-100' : 'opacity-55'}`}>
               <p className="font-medium">Prep reminders</p>
               <p className="text-sm text-muted-foreground">Get reminded to prepare before deadlines</p>
             </div>
             <Switch checked={prepReminders} onCheckedChange={setPrepReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-200 ease-in-out ${liveAlerts ? 'opacity-100' : 'opacity-55'}`}>
               <p className="font-medium">Live opening alerts</p>
               <p className="text-sm text-muted-foreground">Notified when applications go live</p>
             </div>
             <Switch checked={liveAlerts} onCheckedChange={setLiveAlerts} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-200 ease-in-out ${deadlineReminders ? 'opacity-100' : 'opacity-55'}`}>
               <p className="font-medium">Deadline reminders</p>
               <p className="text-sm text-muted-foreground">Alerts before application deadlines</p>
             </div>
             <Switch checked={deadlineReminders} onCheckedChange={setDeadlineReminders} />
           </div>
           <div className="flex items-center justify-between py-2">
-            <div>
+            <div className={`transition-opacity duration-200 ease-in-out ${fyiUpdates ? 'opacity-100' : 'opacity-55'}`}>
               <p className="font-medium">FYI updates</p>
               <p className="text-sm text-muted-foreground">General updates and tips</p>
             </div>
