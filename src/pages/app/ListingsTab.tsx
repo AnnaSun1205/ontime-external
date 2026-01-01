@@ -362,23 +362,30 @@ export default function ListingsTab() {
       </div>
 
       {/* Country filter */}
+      {/* Country filter */}
       <div className="flex gap-1 mb-4">
-        <Button
-          variant={countryFilter === "canada" ? "default" : "ghost"}
-          size="sm"
+        <button
           onClick={() => setCountryFilter("canada")}
-          className="rounded-full"
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            countryFilter === "canada"
+              ? "bg-foreground text-background"
+              : "bg-background/60 text-muted-foreground hover:bg-background/80"
+          )}
         >
           Canada
-        </Button>
-        <Button
-          variant={countryFilter === "us" ? "default" : "ghost"}
-          size="sm"
+        </button>
+        <button
           onClick={() => setCountryFilter("us")}
-          className="rounded-full"
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            countryFilter === "us"
+              ? "bg-foreground text-background"
+              : "bg-background/60 text-muted-foreground hover:bg-background/80"
+          )}
         >
           US
-        </Button>
+        </button>
       </div>
 
       {/* Time tabs */}
@@ -393,7 +400,7 @@ export default function ListingsTab() {
                 ? tab.id === "new"
                   ? "bg-amber-100 text-amber-700"
                   : "bg-foreground text-background"
-                : "text-muted-foreground hover:bg-muted"
+                : "bg-background/60 text-muted-foreground hover:bg-background/80"
             )}
           >
             {tab.id === "new" && <Zap className="w-3.5 h-3.5" />}
