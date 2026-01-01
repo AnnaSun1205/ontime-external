@@ -214,8 +214,9 @@ export default function SettingsTab() {
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold">Settings</h1>
       
-      {/* Email & Quiet Mode */}
-      <div className="bg-card border border-border rounded-2xl p-6 space-y-6">
+      {/* Email Settings */}
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+        <h2 className="font-semibold text-lg">Email settings</h2>
         <div className="space-y-2">
           <Label>Email address</Label>
           <Input 
@@ -227,14 +228,13 @@ export default function SettingsTab() {
             className="!bg-white"
           />
         </div>
-        <div className="flex items-center justify-between p-4 rounded-xl bg-muted">
+        <div className="flex items-center justify-between py-2">
           <div>
             <p className="font-medium">Quiet mode</p>
             <p className="text-sm text-muted-foreground">Only prep + live signals</p>
           </div>
           <Switch checked={quietMode} onCheckedChange={setQuietMode} />
         </div>
-        
         <div className="space-y-2">
           <Label>Email window</Label>
           <p className="text-sm text-muted-foreground">Mon–Fri, 8am–5pm local time</p>
