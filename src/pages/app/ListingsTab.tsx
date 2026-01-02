@@ -443,18 +443,43 @@ export default function ListingsTab() {
     // since it fetches from opening_inbox on mount and tab change
   };
 
+  const isNewListing = (listing: Listing) => {
+    // Hybrid approach: New = first_seen_at > lastSeenForCountry AND NOT in opening_seen
+    // If cutoff not loaded yet, nothing is new
+    if (!lastSeenListingsAt) return false;
+    // Use first_seen_at for New determination (matches DB query logic)
+    const isNewByTime = new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
+    // Also exclude listings already explicitly marked as seen by user
+    const isNotSeen = !seenListingIds.has(listing.id);
+    // BOTH conditions must be true: new by timestamp AND not already seen
+    return isNewByTime && isNotSeen;
+  };
+
+  // Check if current tab has any NEW listings (yellow badges)
+  // Must be defined before handleMarkAllAsSeen uses it
+  const hasNewInCurrentTab = useMemo(() => {
+    return filteredListings.some(listing => isNewListing(listing));
+  }, [filteredListings, lastSeenListingsAt, seenListingIds]);
+
   const handleMarkAllAsSeen = async () => {
     if (!userId) {
       console.error('[Mark as Seen] No user ID');
       return;
     }
 
-    // Get IDs from currently filtered/visible listings (respects search, country, time tab)
-    // This ensures we only mark what the user is currently viewing
-    const idsToMarkSeen = filteredListings.map(listing => listing.id);
+    // Guard: only proceed if there are NEW listings in the current tab
+    if (!hasNewInCurrentTab) {
+      return;
+    }
+
+    // Get IDs from currently filtered/visible NEW listings only (respects search, country, time tab)
+    // This ensures we only mark NEW listings that the user is currently viewing
+    const idsToMarkSeen = filteredListings
+      .filter(listing => isNewListing(listing))
+      .map(listing => listing.id);
     
     if (idsToMarkSeen.length === 0) {
-      toast.info('No listings to mark as seen');
+      // This should not happen if hasNewInCurrentTab is working correctly
       return;
     }
 
@@ -490,18 +515,6 @@ export default function ListingsTab() {
 
     console.log(`[Mark as Seen] Successfully marked ${idsToMarkSeen.length} listings as seen`);
     toast.success(`Marked ${idsToMarkSeen.length} ${activeTab === "new" ? "new" : activeTab} listings as seen`);
-  };
-
-  const isNewListing = (listing: Listing) => {
-    // Hybrid approach: New = first_seen_at > lastSeenForCountry AND NOT in opening_seen
-    // If cutoff not loaded yet, nothing is new
-    if (!lastSeenListingsAt) return false;
-    // Use first_seen_at for New determination (matches DB query logic)
-    const isNewByTime = new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
-    // Also exclude listings already explicitly marked as seen by user
-    const isNotSeen = !seenListingIds.has(listing.id);
-    // BOTH conditions must be true: new by timestamp AND not already seen
-    return isNewByTime && isNotSeen;
   };
 
   const tabs: { id: TimeTab; label: string; count: number }[] = [
@@ -578,15 +591,16 @@ export default function ListingsTab() {
           ))}
         </div>
 
-        {/* Mark all as seen button - inline with tabs, disabled when no items in current tab */}
+        {/* Mark all as seen button - inline with tabs, disabled when no NEW listings in current tab */}
         <button
           onClick={handleMarkAllAsSeen}
-          disabled={filteredListings.length === 0}
+          disabled={!hasNewInCurrentTab}
+          title={!hasNewInCurrentTab ? "No new listings in this view" : undefined}
           className={cn(
             "flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium transition-colors",
-            filteredListings.length > 0
+            hasNewInCurrentTab
               ? "text-muted-foreground hover:text-foreground"
-              : "text-muted-foreground/50 cursor-not-allowed"
+              : "text-muted-foreground/50 cursor-not-allowed opacity-50"
           )}
         >
           <CheckCheck className="w-3.5 h-3.5" />
@@ -612,14 +626,14 @@ export default function ListingsTab() {
       {/* Listings grid */}
       {!loading && !error && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredListings.map((listing) => {
-              const isSaved = savedListings.has(listing.id);
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filteredListings.map((listing) => {
+          const isSaved = savedListings.has(listing.id);
               const isNew = isNewListing(listing);
               const isInInbox = inboxListingIds.has(listing.id);
-              return (
-                <div
-                  key={listing.id}
+          return (
+            <div
+              key={listing.id}
                   className={cn(
                     "border rounded-xl p-4 shadow-sm hover:shadow-md transition-all",
                     isInInbox && "opacity-60",
@@ -627,43 +641,43 @@ export default function ListingsTab() {
                       ? "bg-amber-50 border-amber-200"
                       : "bg-card border-border"
                   )}
-                >
-                  <div className="flex items-start justify-between mb-3">
+            >
+              <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-base">{listing.company}</h3>
+                  <h3 className="font-semibold text-base">{listing.company}</h3>
                       {isNew && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
                           <Zap className="w-3 h-3" />
                           New
                         </span>
                       )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleSave(listing)}
-                      className={cn(
-                        "h-8 w-8 shrink-0",
-                        isSaved && "text-primary"
-                      )}
-                    >
-                      <Bookmark
-                        className={cn("w-4 h-4", isSaved && "fill-current")}
-                      />
-                    </Button>
-                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleSave(listing)}
+                  className={cn(
+                    "h-8 w-8 shrink-0",
+                    isSaved && "text-primary"
+                  )}
+                >
+                  <Bookmark
+                    className={cn("w-4 h-4", isSaved && "fill-current")}
+                  />
+                </Button>
+              </div>
 
                   <p className="text-sm text-foreground/80 mb-2">{listing.role}</p>
 
-                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
-                    <MapPin className="w-3.5 h-3.5" />
-                    {listing.location}
-                  </div>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
+                <MapPin className="w-3.5 h-3.5" />
+                {listing.location}
+              </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
-                      {listing.term}
-                    </span>
+                <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
+                  {listing.term}
+                </span>
                     <div className="flex items-center gap-2">
                       {isInInbox ? (
                         <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
@@ -683,34 +697,34 @@ export default function ListingsTab() {
                         </Button>
                       )}
                       {listing.applyUrl && (
-                        <a
-                          href={listing.applyUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                <a
+                  href={listing.applyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                           className={cn(
                             "flex items-center gap-1 text-sm font-medium hover:underline",
                             isInInbox ? "text-muted-foreground" : "text-primary"
                           )}
-                        >
-                          Apply <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                >
+                  Apply <ExternalLink className="w-3.5 h-3.5" />
+                </a>
                       )}
                     </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
           {/* Empty state */}
-          {filteredListings.length === 0 && (
-            <div className="text-center py-12 text-muted-foreground">
+      {filteredListings.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
               {searchQuery.trim()
                 ? "No listings match your search."
                 : activeTab === "new"
                 ? "No new listings since your last visit."
                 : "No listings available."}
-            </div>
+        </div>
           )}
         </>
       )}
