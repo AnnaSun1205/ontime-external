@@ -49,6 +49,66 @@ interface ParseResult {
   skipped: number;
 }
 
+type RoleCategory = 'software_engineering' | 'product_management' | 'data_science' | 'quantitative_finance' | 'hardware_engineering' | 'other';
+type JobType = 'internship' | 'new_grad';
+
+/**
+ * Classifies a role title into a category
+ */
+function classifyRoleCategory(roleTitle: string): RoleCategory {
+  const title = roleTitle.toLowerCase();
+  
+  // Product Management
+  if (/product\s*(manager|management|lead)|pm\s+intern|product\s+intern|apm/i.test(title)) {
+    return 'product_management';
+  }
+  
+  // Data Science / AI / ML
+  if (/data\s*scien|machine\s*learn|ml\s+|ai\s+|artificial\s+intelligence|deep\s*learn|nlp|computer\s*vision|analytics|data\s*analyst|business\s*intelligence/i.test(title)) {
+    return 'data_science';
+  }
+  
+  // Quantitative Finance
+  if (/quant|trading|quantitative|algorithmic|strat|risk\s*anal|financial\s*engineer/i.test(title)) {
+    return 'quantitative_finance';
+  }
+  
+  // Hardware Engineering
+  if (/hardware|electrical|embedded|firmware|asic|fpga|chip|semiconductor|vlsi|circuit|pcb/i.test(title)) {
+    return 'hardware_engineering';
+  }
+  
+  // Software Engineering (broad catch)
+  if (/software|swe|sde|developer|engineer|programming|full\s*stack|front\s*end|back\s*end|devops|platform|infrastructure|site\s*reliability|cloud/i.test(title)) {
+    return 'software_engineering';
+  }
+  
+  return 'other';
+}
+
+/**
+ * Classifies a role as internship or new grad
+ */
+function classifyJobType(roleTitle: string, term: string): JobType {
+  const title = roleTitle.toLowerCase();
+  const termLower = term.toLowerCase();
+  
+  // Check for new grad indicators
+  if (/new\s*grad|entry\s*level|junior|associate|graduate|full\s*time/i.test(title)) {
+    // But not if it explicitly says intern
+    if (!/intern/i.test(title)) {
+      return 'new_grad';
+    }
+  }
+  
+  // Check term for new grad indicators (and not explicitly intern in title)
+  if (/new\s*grad|full\s*time/i.test(termLower) && !/intern/i.test(title)) {
+    return 'new_grad';
+  }
+  
+  return 'internship';
+}
+
 /**
  * Sanitizes role title by removing emojis, term patterns, and normalizing whitespace
  */
@@ -1210,6 +1270,10 @@ serve(async (req) => {
           row.apply_url || ''
         );
         
+        // Classify role category and job type
+        const roleCategory = classifyRoleCategory(finalRoleTitle);
+        const jobType = classifyJobType(finalRoleTitle, term);
+        
         return {
           company_name: row.company_name,
           role_title: finalRoleTitle,
@@ -1222,7 +1286,9 @@ serve(async (req) => {
           is_active: true,  // Always set to true for fetched listings
           listing_hash: listingHash,
           posted_at: row.posted_at || null,
-          age_days: row.age_days || null
+          age_days: row.age_days || null,
+          role_category: roleCategory,
+          job_type: jobType
         };
       })
     );
