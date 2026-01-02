@@ -16,11 +16,29 @@ interface Listing {
   lastSeenAt: string;
   firstSeenAt: string;
   postedAt: string | null;
-  country: string | null; // CA, US, or null
+  country: string | null;
+  roleCategory: RoleCategory;
+  jobType: JobType;
 }
 
 type TimeTab = "new" | "today" | "last2days" | "last7days" | "all";
 type CountryFilter = "canada" | "us";
+type RoleCategory = "software_engineering" | "product_management" | "data_science" | "quantitative_finance" | "hardware_engineering" | "other";
+type JobType = "internship" | "new_grad";
+
+const ROLE_CATEGORIES: { id: RoleCategory; label: string; shortLabel: string }[] = [
+  { id: "software_engineering", label: "Software Engineering", shortLabel: "SWE" },
+  { id: "product_management", label: "Product Management", shortLabel: "PM" },
+  { id: "data_science", label: "Data Science / AI / ML", shortLabel: "Data/AI" },
+  { id: "quantitative_finance", label: "Quantitative Finance", shortLabel: "Quant" },
+  { id: "hardware_engineering", label: "Hardware Engineering", shortLabel: "Hardware" },
+  { id: "other", label: "Other", shortLabel: "Other" },
+];
+
+const JOB_TYPES: { id: JobType; label: string }[] = [
+  { id: "internship", label: "Internship" },
+  { id: "new_grad", label: "New Grad" },
+];
 
 // Canadian province/territory patterns
 const CANADA_PATTERNS = [
@@ -60,6 +78,14 @@ export default function ListingsTab() {
     const saved = localStorage.getItem("listings-country-filter");
     return (saved === "canada" || saved === "us") ? saved : "us";
   });
+  const [roleCategory, setRoleCategory] = useState<RoleCategory>(() => {
+    const saved = localStorage.getItem("listings-role-category");
+    return ROLE_CATEGORIES.some(c => c.id === saved) ? saved as RoleCategory : "software_engineering";
+  });
+  const [jobType, setJobType] = useState<JobType>(() => {
+    const saved = localStorage.getItem("listings-job-type");
+    return saved === "internship" || saved === "new_grad" ? saved : "internship";
+  });
   const [lastSeenListingsAtUs, setLastSeenListingsAtUs] = useState<string | null>(null);
   const [lastSeenListingsAtCa, setLastSeenListingsAtCa] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -69,10 +95,12 @@ export default function ListingsTab() {
   // Compute current cutoff based on selected country
   const lastSeenListingsAt = countryFilter === "canada" ? lastSeenListingsAtCa : lastSeenListingsAtUs;
 
-  // Save country filter to localStorage
+  // Save filters to localStorage
   useEffect(() => {
     localStorage.setItem("listings-country-filter", countryFilter);
-  }, [countryFilter]);
+    localStorage.setItem("listings-role-category", roleCategory);
+    localStorage.setItem("listings-job-type", jobType);
+  }, [countryFilter, roleCategory, jobType]);
 
   // Fetch opening_inbox data to check which listings are already in inbox
   useEffect(() => {
@@ -195,16 +223,18 @@ export default function ListingsTab() {
           first_seen_at: string;
           last_seen_at: string;
           is_active: boolean;
-          country: string | null; // CA, US, or null
+          country: string | null;
+          role_category: RoleCategory;
+          job_type: JobType;
         };
 
         const { data, error: fetchError } = await supabase
           .from('opening_signals')
-          .select('id, company_name, role_title, location, term, apply_url, posted_at, first_seen_at, last_seen_at, is_active, country')
+          .select('id, company_name, role_title, location, term, apply_url, posted_at, first_seen_at, last_seen_at, is_active, country, role_category, job_type')
           .eq('is_active', true)
           .order('posted_at', { ascending: false, nullsFirst: false })
           .order('last_seen_at', { ascending: false })
-          .limit(500) as { data: OpeningSignal[] | null; error: any };
+          .limit(1000) as { data: OpeningSignal[] | null; error: any };
 
         if (fetchError) {
           console.error('Supabase query error:', fetchError);
@@ -221,7 +251,9 @@ export default function ListingsTab() {
           lastSeenAt: signal.last_seen_at || '',
           firstSeenAt: signal.first_seen_at || '',
           postedAt: signal.posted_at,
-          country: signal.country || null
+          country: signal.country || null,
+          roleCategory: signal.role_category || 'software_engineering',
+          jobType: signal.job_type || 'internship',
         }));
         
         console.log('[Listings] Fetched', mappedListings.length, 'listings');
@@ -239,9 +271,16 @@ export default function ListingsTab() {
     fetchListings();
   }, []);
 
+  // Filter by role category and job type first
+  const categoryFilteredListings = useMemo(() => {
+    return listings.filter(listing => 
+      listing.roleCategory === roleCategory && listing.jobType === jobType
+    );
+  }, [listings, roleCategory, jobType]);
+
   // Filter by country - use DB country column, fallback to location parsing
   const countryFilteredListings = useMemo(() => {
-    return listings.filter(listing => {
+    return categoryFilteredListings.filter(listing => {
       // Prefer DB country column if available
       const dbCountry = listing.country;
       if (dbCountry) {
@@ -257,7 +296,7 @@ export default function ListingsTab() {
       // Include if matches filter, or if unknown (show in both)
       return parsedCountry === countryFilter || parsedCountry === "unknown";
     });
-  }, [listings, countryFilter]);
+  }, [categoryFilteredListings, countryFilter]);
 
   // Filter by time tab
   const timeFilteredListings = useMemo(() => {
@@ -525,6 +564,44 @@ export default function ListingsTab() {
     { id: "all", label: "All", count: tabCounts.all },
   ];
 
+  // Calculate category counts for display
+  const categoryCounts = useMemo(() => {
+    const counts: Record<RoleCategory, number> = {
+      software_engineering: 0,
+      product_management: 0,
+      data_science: 0,
+      quantitative_finance: 0,
+      hardware_engineering: 0,
+      other: 0,
+    };
+    
+    // Filter by current job type, then count by category
+    listings
+      .filter(l => l.jobType === jobType)
+      .forEach(l => {
+        counts[l.roleCategory]++;
+      });
+    
+    return counts;
+  }, [listings, jobType]);
+
+  // Calculate job type counts for display
+  const jobTypeCounts = useMemo(() => {
+    const counts: Record<JobType, number> = {
+      internship: 0,
+      new_grad: 0,
+    };
+    
+    // Filter by current category, then count by job type
+    listings
+      .filter(l => l.roleCategory === roleCategory)
+      .forEach(l => {
+        counts[l.jobType]++;
+      });
+    
+    return counts;
+  }, [listings, roleCategory]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -542,7 +619,54 @@ export default function ListingsTab() {
         />
       </div>
 
-      {/* Country filter */}
+      {/* Role Category filter */}
+      <div className="mb-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Category</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {ROLE_CATEGORIES.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setRoleCategory(cat.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                roleCategory === cat.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
+              )}
+            >
+              {cat.shortLabel}
+              <span className="ml-1.5 text-xs opacity-70">({categoryCounts[cat.id]})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Job Type filter */}
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</span>
+        </div>
+        <div className="inline-flex gap-0 p-1 bg-muted rounded-lg">
+          {JOB_TYPES.map((type) => (
+            <button
+              key={type.id}
+              onClick={() => setJobType(type.id)}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                jobType === type.id
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {type.label}
+              <span className="ml-1.5 text-xs opacity-70">({jobTypeCounts[type.id]})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Country filter */}
       <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg">
         <button
