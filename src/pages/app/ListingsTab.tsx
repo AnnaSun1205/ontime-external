@@ -64,6 +64,7 @@ export default function ListingsTab() {
   const [lastSeenListingsAtCa, setLastSeenListingsAtCa] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [inboxListingIds, setInboxListingIds] = useState<Set<string>>(new Set());
+  const [seenListingIds, setSeenListingIds] = useState<Set<string>>(new Set());
   
   // Compute current cutoff based on selected country
   const lastSeenListingsAt = countryFilter === "canada" ? lastSeenListingsAtCa : lastSeenListingsAtUs;
@@ -98,6 +99,33 @@ export default function ListingsTab() {
     
     if (userId) {
       fetchInboxListings();
+    }
+  }, [userId]);
+
+  // Fetch opening_seen data to track which listings user has marked as seen
+  useEffect(() => {
+    async function fetchSeenListings() {
+      if (!userId) return;
+      
+      const { data, error } = await supabase
+        .from('opening_seen')
+        .select('opening_id')
+        .eq('user_id', userId) as { data: { opening_id: string }[] | null; error: any };
+      
+      if (error) {
+        console.error('[Seen] Error fetching seen listings:', error);
+        return;
+      }
+      
+      if (data) {
+        const ids = new Set(data.map(item => item.opening_id));
+        setSeenListingIds(ids);
+        console.log('[Seen] Loaded', ids.size, 'seen listing IDs');
+      }
+    }
+    
+    if (userId) {
+      fetchSeenListings();
     }
   }, [userId]);
 
@@ -250,7 +278,10 @@ export default function ListingsTab() {
           // If cutoff not loaded yet, show nothing as new (loading state)
           if (!lastSeenListingsAt) return false;
           // Use first_seen_at for New determination (matches DB query logic)
-          return firstSeen > new Date(lastSeenListingsAt);
+          // Also exclude listings already in opening_seen
+          const isNewByTime = firstSeen > new Date(lastSeenListingsAt);
+          const isNotSeen = !seenListingIds.has(listing.id);
+          return isNewByTime && isNotSeen;
         case "today":
           return firstSeen >= startOfToday;
         case "last2days":
@@ -262,7 +293,7 @@ export default function ListingsTab() {
           return true;
       }
     });
-  }, [countryFilteredListings, activeTab, lastSeenListingsAt]);
+  }, [countryFilteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
 
   // Search filter
   const filteredListings = useMemo(() => {
@@ -308,8 +339,10 @@ export default function ListingsTab() {
     countryFilteredListings.forEach(listing => {
       const firstSeen = new Date(listing.firstSeenAt);
 
-      // New count: use first_seen_at > last_seen_listings_at (matches DB query)
-      if (lastSeenListingsAt && firstSeen > new Date(lastSeenListingsAt)) {
+      // New count: use first_seen_at > last_seen_listings_at AND not in opening_seen
+      const isNewByTime = lastSeenListingsAt && firstSeen > new Date(lastSeenListingsAt);
+      const isNotSeen = !seenListingIds.has(listing.id);
+      if (isNewByTime && isNotSeen) {
         newCount++;
       }
       
@@ -333,7 +366,7 @@ export default function ListingsTab() {
       last7days: last7DaysCount,
       all: countryFilteredListings.length
     };
-  }, [countryFilteredListings, lastSeenListingsAt]);
+  }, [countryFilteredListings, lastSeenListingsAt, seenListingIds]);
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
@@ -386,19 +419,28 @@ export default function ListingsTab() {
       return;
     }
 
+    // Get IDs from currently filtered/visible listings (respects search, country, time tab)
+    const idsToMarkSeen = filteredListings.map(listing => listing.id);
+    
+    if (idsToMarkSeen.length === 0) {
+      toast.info('No listings to mark as seen');
+      return;
+    }
+
+    console.log(`[Mark as Seen] Marking ${idsToMarkSeen.length} listings as seen for ${activeTab} tab, ${countryFilter} country`);
+
     const now = new Date().toISOString();
     
-    // Update only the country-specific timestamp
-    const updateField = countryFilter === "canada" 
-      ? { last_seen_listings_at_ca: now }
-      : { last_seen_listings_at_us: now };
-    
-    console.log(`[Mark as Seen] Setting ${countryFilter} cutoff to:`, now);
-    
+    // Upsert into opening_seen for each listing ID
+    const rowsToInsert = idsToMarkSeen.map(openingId => ({
+      user_id: userId,
+      opening_id: openingId,
+      seen_at: now
+    }));
+
     const { error } = await supabase
-      .from('user_preferences')
-      .update(updateField)
-      .eq('user_id', userId);
+      .from('opening_seen')
+      .upsert(rowsToInsert, { onConflict: 'user_id,opening_id' });
 
     if (error) {
       console.error('[Mark as Seen] Error:', error);
@@ -406,21 +448,25 @@ export default function ListingsTab() {
       return;
     }
 
-    // Update local state immediately for the current country only
-    if (countryFilter === "canada") {
-      setLastSeenListingsAtCa(now);
-    } else {
-      setLastSeenListingsAtUs(now);
-    }
-    console.log(`[Mark as Seen] ${countryFilter.toUpperCase()} New count should now be 0`);
-    toast.success(`All ${countryFilter === "canada" ? "Canada" : "US"} listings marked as seen`);
+    // Update local state immediately so UI reflects changes
+    setSeenListingIds(prev => {
+      const updated = new Set(prev);
+      idsToMarkSeen.forEach(id => updated.add(id));
+      return updated;
+    });
+
+    console.log(`[Mark as Seen] Successfully marked ${idsToMarkSeen.length} listings as seen`);
+    toast.success(`Marked ${idsToMarkSeen.length} ${activeTab === "new" ? "new" : activeTab} listings as seen`);
   };
 
   const isNewListing = (listing: Listing) => {
     // If cutoff not loaded yet, nothing is new
     if (!lastSeenListingsAt) return false;
     // Use first_seen_at for New determination (matches DB query logic)
-    return new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
+    // Also exclude listings already in opening_seen
+    const isNewByTime = new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
+    const isNotSeen = !seenListingIds.has(listing.id);
+    return isNewByTime && isNotSeen;
   };
 
   const tabs: { id: TimeTab; label: string; count: number }[] = [
