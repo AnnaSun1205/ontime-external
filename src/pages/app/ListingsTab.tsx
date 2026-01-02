@@ -298,19 +298,25 @@ export default function ListingsTab() {
     });
   }, [countryFilteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
 
-  // Search filter
+  // Search filter - when active, searches across ALL listings (ignores country + time tab)
   const filteredListings = useMemo(() => {
-    if (!searchQuery.trim()) return timeFilteredListings;
+    if (!searchQuery.trim()) {
+      // No search: use normal country + time tab filtering
+      return timeFilteredListings;
+    }
+    
+    // Search is active: search across ALL listings (ignore country and time tab)
     const query = searchQuery.toLowerCase();
-    return timeFilteredListings.filter(
+    return listings.filter(
       (listing) =>
         listing.company.toLowerCase().includes(query) ||
         listing.role.toLowerCase().includes(query) ||
         listing.location.toLowerCase().includes(query)
     );
-  }, [searchQuery, timeFilteredListings]);
+  }, [searchQuery, timeFilteredListings, listings]);
 
   // Calculate counts for tabs
+  // When search is active, counts reflect search results; otherwise use country-filtered listings
   const tabCounts = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -319,20 +325,20 @@ export default function ListingsTab() {
     const sevenDaysAgo = new Date(startOfToday);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+    // Use search results if search is active, otherwise use country-filtered listings
+    const listingsToCount = searchQuery.trim() ? filteredListings : countryFilteredListings;
+
     let newCount = 0;
     let todayCount = 0;
     let last2DaysCount = 0;
     let last7DaysCount = 0;
 
-    // Debug logs for New tab logic
-    const sampleListings = countryFilteredListings.slice(0, 5);
-    
-    // Count breakdown for debugging
+    // Count breakdown for debugging (only when not searching)
     let newByTimeCount = 0;
     let seenCount = 0;
     let newAndNotSeenCount = 0;
     
-    countryFilteredListings.forEach(listing => {
+    listingsToCount.forEach(listing => {
       const firstSeen = new Date(listing.firstSeenAt);
 
       // New count: use first_seen_at > last_seen_listings_at AND not in opening_seen
@@ -351,31 +357,36 @@ export default function ListingsTab() {
       if (firstSeen >= sevenDaysAgo) last7DaysCount++;
     });
     
-    console.log('[New Logic] DEBUG:', {
-      lastSeenValue: lastSeenListingsAt,
-      countryFilter: countryFilter,
-      totalListings: countryFilteredListings.length,
-      seenListingIdsCount: seenListingIds.size,
-      breakdown: {
-        newByTimeOnly: newByTimeCount,
-        alreadySeen: seenCount,
-        newAndNotSeen: newAndNotSeenCount
-      },
-      sampleListings: sampleListings.map(l => ({
-        company: l.company,
-        country: l.country,
-        firstSeenAt: l.firstSeenAt,
-        isNewByTime: lastSeenListingsAt ? new Date(l.firstSeenAt) > new Date(lastSeenListingsAt) : false,
-        isSeen: seenListingIds.has(l.id)
-      }))
-    });
+    // Debug logs (only when not searching to avoid spam)
+    if (!searchQuery.trim()) {
+      const sampleListings = countryFilteredListings.slice(0, 5);
+      console.log('[New Logic] DEBUG:', {
+        lastSeenValue: lastSeenListingsAt,
+        countryFilter: countryFilter,
+        totalListings: countryFilteredListings.length,
+        seenListingIdsCount: seenListingIds.size,
+        breakdown: {
+          newByTimeOnly: newByTimeCount,
+          alreadySeen: seenCount,
+          newAndNotSeen: newAndNotSeenCount
+        },
+        sampleListings: sampleListings.map(l => ({
+          company: l.company,
+          country: l.country,
+          firstSeenAt: l.firstSeenAt,
+          isNewByTime: lastSeenListingsAt ? new Date(l.firstSeenAt) > new Date(lastSeenListingsAt) : false,
+          isSeen: seenListingIds.has(l.id)
+        }))
+      });
+    }
     
     console.log('[New Logic] Computed counts:', {
       new: newCount,
       today: todayCount,
       last2days: last2DaysCount,
       last7days: last7DaysCount,
-      all: countryFilteredListings.length
+      all: listingsToCount.length,
+      isSearching: !!searchQuery.trim()
     });
 
     return {
@@ -383,9 +394,9 @@ export default function ListingsTab() {
       today: todayCount,
       last2days: last2DaysCount,
       last7days: last7DaysCount,
-      all: countryFilteredListings.length
+      all: listingsToCount.length
     };
-  }, [countryFilteredListings, lastSeenListingsAt, seenListingIds]);
+  }, [countryFilteredListings, filteredListings, lastSeenListingsAt, seenListingIds, searchQuery]);
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
