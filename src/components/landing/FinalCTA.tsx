@@ -36,10 +36,11 @@ export function FinalCTA() {
       `}
     >
       {/* Gradient background layer - positioned absolutely to avoid container seams */}
+      {/* Fully blue throughout, smooth transition to white at bottom for footer */}
       <div 
         className="absolute inset-0 z-0"
         style={{
-          background: 'linear-gradient(to bottom, hsl(214 95% 93%) 0%, hsl(214 95% 95%) 15%, hsl(214 95% 97%) 30%, hsl(214 95% 93%) 50%, hsl(214 95% 94%) 70%, hsl(214 95% 97%) 85%, #ffffff 100%)'
+          background: 'linear-gradient(to bottom, hsl(214 95% 93%) 0%, hsl(214 95% 93%) 70%, hsl(214 95% 96%) 85%, #ffffff 100%)'
         }}
       />
       
