@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Search, ExternalLink, Bookmark, MapPin, Loader2, Zap, CheckCheck } from "lucide-react";
+import { Search, ExternalLink, Bookmark, MapPin, Loader2, Zap, CheckCheck, Plus, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,7 @@ export default function ListingsTab() {
   const [lastSeenListingsAtUs, setLastSeenListingsAtUs] = useState<string | null>(null);
   const [lastSeenListingsAtCa, setLastSeenListingsAtCa] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [inboxListingIds, setInboxListingIds] = useState<Set<string>>(new Set());
   
   // Compute current cutoff based on selected country
   const lastSeenListingsAt = countryFilter === "canada" ? lastSeenListingsAtCa : lastSeenListingsAtUs;
@@ -70,6 +71,34 @@ export default function ListingsTab() {
   useEffect(() => {
     localStorage.setItem("listings-country-filter", countryFilter);
   }, [countryFilter]);
+
+  // Fetch opening_inbox data to check which listings are already in inbox
+  useEffect(() => {
+    async function fetchInboxListings() {
+      if (!userId) return;
+      
+      const { data, error } = await supabase
+        .from('opening_inbox' as any)
+        .select('opening_id')
+        .eq('user_id', userId)
+        .eq('status', 'active')
+        .eq('section', 'action_required') as { data: { opening_id: string }[] | null; error: any };
+      
+      if (error) {
+        console.error('[Inbox] Error fetching inbox listings:', error);
+        return;
+      }
+      
+      if (data) {
+        const ids = new Set(data.map(item => item.opening_id));
+        setInboxListingIds(ids);
+      }
+    }
+    
+    if (userId) {
+      fetchInboxListings();
+    }
+  }, [userId]);
 
   // Fetch user preferences (country-specific last_seen timestamps)
   useEffect(() => {
@@ -292,6 +321,37 @@ export default function ListingsTab() {
     });
   };
 
+  const handleAddToInbox = async (listing: Listing) => {
+    if (!userId) {
+      toast.error('Please sign in to add listings to inbox');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('opening_inbox' as any)
+      .upsert({
+        user_id: userId,
+        opening_id: listing.id,
+        section: 'action_required',
+        status: 'active'
+      }, {
+        onConflict: 'user_id,opening_id'
+      });
+
+    if (error) {
+      console.error('[Inbox] Error adding to inbox:', error);
+      toast.error('Failed to add to inbox');
+      return;
+    }
+
+    // Update local state immediately
+    setInboxListingIds(prev => new Set([...prev, listing.id]));
+    toast.success(`Added ${listing.company} to Inbox`);
+    
+    // Note: InboxTab will automatically show the new item on next visit/refresh
+    // since it fetches from opening_inbox on mount and tab change
+  };
+
   const handleMarkAllAsSeen = async () => {
     if (!userId) {
       console.error('[Mark as Seen] No user ID');
@@ -448,12 +508,14 @@ export default function ListingsTab() {
             {filteredListings.map((listing) => {
               const isSaved = savedListings.has(listing.id);
               const isNew = isNewListing(listing);
+              const isInInbox = inboxListingIds.has(listing.id);
               return (
                 <div
                   key={listing.id}
                   className={cn(
-                    "border rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow",
-                    isNew
+                    "border rounded-xl p-4 shadow-sm hover:shadow-md transition-all",
+                    isInInbox && "opacity-60",
+                    isNew && !isInInbox
                       ? "bg-amber-50 border-amber-200"
                       : "bg-card border-border"
                   )}
@@ -490,18 +552,42 @@ export default function ListingsTab() {
                     {listing.location}
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
                       {listing.term}
                     </span>
-                    <a
-                      href={listing.applyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
-                    >
-                      Apply <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      {isInInbox ? (
+                        <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                          <Check className="w-3.5 h-3.5" />
+                          Added
+                        </span>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAddToInbox(listing)}
+                          disabled={isInInbox}
+                          className="h-7 text-xs"
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Add
+                        </Button>
+                      )}
+                      {listing.applyUrl && (
+                        <a
+                          href={listing.applyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={cn(
+                            "flex items-center gap-1 text-sm font-medium hover:underline",
+                            isInInbox ? "text-muted-foreground" : "text-primary"
+                          )}
+                        >
+                          Apply <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { ExternalLink, Calendar, Building2, Check, Bell, Zap, Clock, Info, Archive, Inbox, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface InboxItem {
   id: string;
@@ -16,6 +18,25 @@ interface InboxItem {
   isNew: boolean; // "new" badge state
   isArchived: boolean; // moved to archive
   archivedAt?: Date; // when it was archived
+  opening_id?: string; // FK to opening_signals
+}
+
+interface OpeningInboxRow {
+  opening_id: string;
+  created_at: string;
+  section: string;
+  status: string;
+  opening_signals: {
+    id: string;
+    company_name: string;
+    role_title: string;
+    location: string | null;
+    term: string;
+    apply_url: string;
+    posted_at: string | null;
+    first_seen_at: string;
+    last_seen_at: string;
+  };
 }
 
 // Helper to format timestamps
@@ -173,8 +194,76 @@ interface UrgencyGroup {
 
 export default function InboxTab() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<InboxItem[]>(createInitialItems);
+  const [items, setItems] = useState<InboxItem[]>([]);
   const [activeTab, setActiveTab] = useState<"active" | "archive">("active");
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Fetch opening_inbox data from Supabase
+  useEffect(() => {
+    async function fetchInboxItems() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      
+      setUserId(user.id);
+      
+      try {
+        // For active tab: show status='active'
+        // For archive tab: show status='archived' (not 'hidden')
+        const statusFilter = activeTab === "active" ? "active" : "archived";
+        
+        const { data: inboxData, error } = await supabase
+          .from('opening_inbox' as any)
+          .select('opening_id, created_at, section, status, opening_signals(*)')
+          .eq('user_id', user.id)
+          .eq('status', statusFilter)
+          .eq('section', 'action_required')
+          .order('created_at', { ascending: false }) as { data: OpeningInboxRow[] | null; error: any };
+        
+        if (error) {
+          console.error('[Inbox] Error fetching inbox items:', error);
+          toast.error('Failed to load inbox items');
+          setLoading(false);
+          return;
+        }
+        
+        // Transform opening_inbox rows to InboxItem format
+        const transformedItems: InboxItem[] = (inboxData || []).map((row: OpeningInboxRow) => {
+          const signal = row.opening_signals;
+          if (!signal) {
+            console.warn('[Inbox] Missing opening_signals for row:', row);
+            return null;
+          }
+          return {
+            id: row.opening_id, // Use opening_id as the item id
+            type: "live" as const, // Default to "live" for action_required items
+            urgency: "now" as const, // Action required items are "now"
+            company: signal.company_name || '',
+            role: signal.role_title || '',
+            message: `${signal.company_name} — ${signal.role_title} is available. Apply now.`,
+            timestamp: new Date(row.created_at),
+            link: signal.apply_url || undefined,
+            isNew: false, // Can be enhanced later with read tracking
+            isArchived: statusFilter === "archived",
+            archivedAt: statusFilter === "archived" ? new Date(row.created_at) : undefined,
+            opening_id: row.opening_id
+          };
+        }).filter((item) => item !== null) as InboxItem[];
+        
+        setItems(transformedItems);
+      } catch (err) {
+        console.error('[Inbox] Error:', err);
+        toast.error('Failed to load inbox items');
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    fetchInboxItems();
+  }, [activeTab]);
 
   // Mark item as read (remove "new" badge only)
   const markAsRead = (id: string) => {
@@ -185,47 +274,98 @@ export default function InboxTab() {
     );
   };
 
-  // Archive an item
-  const archiveItem = (id: string) => {
-    setItems(prev => 
-      prev.map(item => 
-        item.id === id ? { ...item, isArchived: true, archivedAt: new Date(), isNew: false } : item
-      )
-    );
-  };
-
-  // Unarchive an item
-  const unarchiveItem = (id: string) => {
-    setItems(prev => 
-      prev.map(item => 
-        item.id === id ? { ...item, isArchived: false, archivedAt: undefined } : item
-      )
-    );
-  };
-
-  // Auto-archive FYI items after they've been read for a period (simulated with 5s for demo)
-  useEffect(() => {
-    const fyiItems = items.filter(item => item.urgency === "fyi" && !item.isNew && !item.isArchived);
-    if (fyiItems.length > 0) {
-      const timer = setTimeout(() => {
-        setItems(prev => 
-          prev.map(item => 
-            item.urgency === "fyi" && !item.isNew && !item.isArchived 
-              ? { ...item, isArchived: true, archivedAt: new Date() } 
-              : item
-          )
-        );
-      }, 5000); // Auto-archive FYI after 5 seconds (in production would be 24-72h)
-      return () => clearTimeout(timer);
+  // Hide an item - update opening_inbox.status to 'hidden'
+  const archiveItem = async (id: string) => {
+    if (!userId) return;
+    
+    const { error } = await supabase
+      .from('opening_inbox' as any)
+      .update({ status: 'hidden' })
+      .eq('user_id', userId)
+      .eq('opening_id', id);
+    
+    if (error) {
+      console.error('[Inbox] Error hiding item:', error);
+      toast.error('Failed to hide item');
+      return;
     }
-  }, [items]);
+    
+    // Remove from list (hidden items don't show in either tab)
+    setItems(prev => prev.filter(item => item.id !== id));
+    toast.success('Item hidden');
+  };
+
+  // Archive an item - update opening_inbox.status to 'archived'
+  const archiveToArchive = async (id: string) => {
+    if (!userId) return;
+    
+    const { error } = await supabase
+      .from('opening_inbox' as any)
+      .update({ status: 'archived' })
+      .eq('user_id', userId)
+      .eq('opening_id', id);
+    
+    if (error) {
+      console.error('[Inbox] Error archiving item:', error);
+      toast.error('Failed to archive item');
+      return;
+    }
+    
+    // If on active tab, remove from list (will show in archive tab)
+    if (activeTab === "active") {
+      setItems(prev => prev.filter(item => item.id !== id));
+    } else {
+      // If on archive tab, update local state
+      setItems(prev => 
+        prev.map(item => 
+          item.id === id ? { ...item, isArchived: true, archivedAt: new Date() } : item
+        )
+      );
+    }
+    
+    toast.success('Item archived');
+  };
+
+  // Unarchive/Restore an item - update opening_inbox.status back to active
+  const unarchiveItem = async (id: string) => {
+    if (!userId) return;
+    
+    const { error } = await supabase
+      .from('opening_inbox' as any)
+      .update({ status: 'active' })
+      .eq('user_id', userId)
+      .eq('opening_id', id);
+    
+    if (error) {
+      console.error('[Inbox] Error restoring item:', error);
+      toast.error('Failed to restore item');
+      return;
+    }
+    
+    // If on archive tab, remove from list (will show in active tab)
+    if (activeTab === "archive") {
+      setItems(prev => prev.filter(item => item.id !== id));
+    } else {
+      // If on active tab, update local state
+      setItems(prev => 
+        prev.map(item => 
+          item.id === id ? { ...item, isArchived: false, archivedAt: undefined } : item
+        )
+      );
+    }
+    
+    toast.success('Item restored');
+  };
+
 
   const markAllAsRead = () => {
     setItems(prev => prev.map(item => ({ ...item, isNew: false })));
   };
 
-  const activeItems = items.filter(item => !item.isArchived);
-  const archivedItems = items.filter(item => item.isArchived);
+  // Items are already filtered by status in the query based on activeTab
+  // activeTab="active" shows status='active', activeTab="archive" shows status='archived'
+  const activeItems = activeTab === "active" ? items : [];
+  const archivedItems = activeTab === "archive" ? items : [];
   const newCount = activeItems.filter(item => item.isNew).length;
 
   const handleCardClick = (item: InboxItem) => {
@@ -258,8 +398,10 @@ export default function InboxTab() {
   const handleArchiveAction = (e: React.MouseEvent, item: InboxItem) => {
     e.stopPropagation();
     if (item.isArchived) {
+      // Restore from archive
       unarchiveItem(item.id);
     } else {
+      // Hide item (sets status to 'hidden')
       archiveItem(item.id);
     }
   };
@@ -396,6 +538,17 @@ export default function InboxTab() {
       <p className="text-sm">{message}</p>
     </div>
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-[calc(100vh-12rem)] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading inbox...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-12rem)]">
