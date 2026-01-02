@@ -16,6 +16,7 @@ interface Listing {
   lastSeenAt: string;
   firstSeenAt: string;
   postedAt: string | null;
+  country: string | null; // CA, US, or null
 }
 
 type TimeTab = "new" | "today" | "last2days" | "last7days" | "all";
@@ -123,22 +124,22 @@ export default function ListingsTab() {
       }
 
       if (data) {
-        // Set US cutoff
+        // Set US cutoff - use the database value as-is, do NOT override with last_login
         let usCutoff = (data as any).last_seen_listings_at_us;
         if (!usCutoff) {
+          // Only set to now() if it's truly null (first time user)
           usCutoff = new Date().toISOString();
-        } else if (data.last_login && new Date(data.last_login) > new Date(usCutoff)) {
-          usCutoff = data.last_login;
         }
+        // DO NOT update based on last_login - preserve the user's manual settings
         setLastSeenListingsAtUs(usCutoff);
         
-        // Set CA cutoff
+        // Set CA cutoff - use the database value as-is, do NOT override with last_login
         let caCutoff = (data as any).last_seen_listings_at_ca;
         if (!caCutoff) {
+          // Only set to now() if it's truly null (first time user)
           caCutoff = new Date().toISOString();
-        } else if (data.last_login && new Date(data.last_login) > new Date(caCutoff)) {
-          caCutoff = data.last_login;
         }
+        // DO NOT update based on last_login - preserve the user's manual settings
         setLastSeenListingsAtCa(caCutoff);
         
         console.log('[New Logic] US cutoff:', usCutoff, '| CA cutoff:', caCutoff);
@@ -166,11 +167,12 @@ export default function ListingsTab() {
           first_seen_at: string;
           last_seen_at: string;
           is_active: boolean;
+          country: string | null; // CA, US, or null
         };
 
         const { data, error: fetchError } = await supabase
           .from('opening_signals')
-          .select('id, company_name, role_title, location, term, apply_url, posted_at, first_seen_at, last_seen_at, is_active')
+          .select('id, company_name, role_title, location, term, apply_url, posted_at, first_seen_at, last_seen_at, is_active, country')
           .eq('is_active', true)
           .order('posted_at', { ascending: false, nullsFirst: false })
           .order('last_seen_at', { ascending: false })
@@ -190,7 +192,8 @@ export default function ListingsTab() {
           applyUrl: signal.apply_url || '',
           lastSeenAt: signal.last_seen_at || '',
           firstSeenAt: signal.first_seen_at || '',
-          postedAt: signal.posted_at
+          postedAt: signal.posted_at,
+          country: signal.country || null
         }));
         
         console.log('[Listings] Fetched', mappedListings.length, 'listings');
@@ -208,12 +211,23 @@ export default function ListingsTab() {
     fetchListings();
   }, []);
 
-  // Filter by country
+  // Filter by country - use DB country column, fallback to location parsing
   const countryFilteredListings = useMemo(() => {
     return listings.filter(listing => {
-      const country = classifyCountry(listing.location);
+      // Prefer DB country column if available
+      const dbCountry = listing.country;
+      if (dbCountry) {
+        // Map DB country codes to filter values
+        if (dbCountry === 'CA' && countryFilter === 'canada') return true;
+        if (dbCountry === 'US' && countryFilter === 'us') return true;
+        // If country is set but doesn't match filter, exclude
+        if (dbCountry === 'CA' && countryFilter === 'us') return false;
+        if (dbCountry === 'US' && countryFilter === 'canada') return false;
+      }
+      // Fallback to location parsing for null country values
+      const parsedCountry = classifyCountry(listing.location);
       // Include if matches filter, or if unknown (show in both)
-      return country === countryFilter || country === "unknown";
+      return parsedCountry === countryFilter || parsedCountry === "unknown";
     });
   }, [listings, countryFilter]);
 
@@ -227,17 +241,16 @@ export default function ListingsTab() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
     return countryFilteredListings.filter(listing => {
-      // Use posted_at for New logic, fallback to firstSeenAt for time-based tabs
-      const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
+      // Use first_seen_at for New logic (as per DB query)
       const firstSeen = new Date(listing.firstSeenAt);
+      const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
 
       switch (activeTab) {
         case "new":
           // If cutoff not loaded yet, show nothing as new (loading state)
           if (!lastSeenListingsAt) return false;
-          // Use posted_at for New determination
-          if (!postedAt) return false;
-          return postedAt > new Date(lastSeenListingsAt);
+          // Use first_seen_at for New determination (matches DB query logic)
+          return firstSeen > new Date(lastSeenListingsAt);
         case "today":
           return firstSeen >= startOfToday;
         case "last2days":
@@ -277,17 +290,26 @@ export default function ListingsTab() {
     let last2DaysCount = 0;
     let last7DaysCount = 0;
 
-    // Log sample posted_at values for verification
-    const sampleListings = countryFilteredListings.slice(0, 3);
-    console.log('[New Logic] Cutoff:', lastSeenListingsAt);
-    console.log('[New Logic] Sample listings posted_at:', sampleListings.map(l => ({ company: l.company, postedAt: l.postedAt })));
+    // Debug logs for New tab logic
+    const sampleListings = countryFilteredListings.slice(0, 5);
+    console.log('[New Logic] DEBUG:', {
+      lastSeenValue: lastSeenListingsAt,
+      countryFilter: countryFilter,
+      totalListings: countryFilteredListings.length,
+      sampleListings: sampleListings.map(l => ({
+        company: l.company,
+        country: l.country,
+        firstSeenAt: l.firstSeenAt,
+        postedAt: l.postedAt,
+        location: l.location
+      }))
+    });
 
     countryFilteredListings.forEach(listing => {
-      const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
       const firstSeen = new Date(listing.firstSeenAt);
 
-      // New count: only if cutoff is set and posted_at > cutoff
-      if (lastSeenListingsAt && postedAt && postedAt > new Date(lastSeenListingsAt)) {
+      // New count: use first_seen_at > last_seen_listings_at (matches DB query)
+      if (lastSeenListingsAt && firstSeen > new Date(lastSeenListingsAt)) {
         newCount++;
       }
       
@@ -296,7 +318,13 @@ export default function ListingsTab() {
       if (firstSeen >= sevenDaysAgo) last7DaysCount++;
     });
     
-    console.log('[New Logic] Computed New count:', newCount);
+    console.log('[New Logic] Computed counts:', {
+      new: newCount,
+      today: todayCount,
+      last2days: last2DaysCount,
+      last7days: last7DaysCount,
+      all: countryFilteredListings.length
+    });
 
     return {
       new: newCount,
@@ -391,9 +419,8 @@ export default function ListingsTab() {
   const isNewListing = (listing: Listing) => {
     // If cutoff not loaded yet, nothing is new
     if (!lastSeenListingsAt) return false;
-    // Use posted_at for New determination
-    if (!listing.postedAt) return false;
-    return new Date(listing.postedAt) > new Date(lastSeenListingsAt);
+    // Use first_seen_at for New determination (matches DB query logic)
+    return new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
   };
 
   const tabs: { id: TimeTab; label: string; count: number }[] = [
