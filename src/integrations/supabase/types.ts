@@ -133,8 +133,10 @@ export type Database = {
           created_at: string | null
           first_seen_at: string | null
           id: string
+          job_type: Database["public"]["Enums"]["job_type"] | null
           last_seen_at: string | null
           location: string | null
+          role_category: Database["public"]["Enums"]["role_category"] | null
           role_title: string
           source: string | null
           status: string | null
@@ -147,8 +149,10 @@ export type Database = {
           created_at?: string | null
           first_seen_at?: string | null
           id?: string
+          job_type?: Database["public"]["Enums"]["job_type"] | null
           last_seen_at?: string | null
           location?: string | null
+          role_category?: Database["public"]["Enums"]["role_category"] | null
           role_title: string
           source?: string | null
           status?: string | null
@@ -161,8 +165,10 @@ export type Database = {
           created_at?: string | null
           first_seen_at?: string | null
           id?: string
+          job_type?: Database["public"]["Enums"]["job_type"] | null
           last_seen_at?: string | null
           location?: string | null
+          role_category?: Database["public"]["Enums"]["role_category"] | null
           role_title?: string
           source?: string | null
           status?: string | null
@@ -286,10 +292,12 @@ export type Database = {
           first_seen_at: string
           id: string
           is_active: boolean | null
+          job_type: Database["public"]["Enums"]["job_type"] | null
           last_seen_at: string
           listing_hash: string | null
           location: string | null
           posted_at: string | null
+          role_category: Database["public"]["Enums"]["role_category"] | null
           role_title: string
           signal_type: string
           source: string
@@ -306,10 +314,12 @@ export type Database = {
           first_seen_at?: string
           id?: string
           is_active?: boolean | null
+          job_type?: Database["public"]["Enums"]["job_type"] | null
           last_seen_at?: string
           listing_hash?: string | null
           location?: string | null
           posted_at?: string | null
+          role_category?: Database["public"]["Enums"]["role_category"] | null
           role_title: string
           signal_type?: string
           source?: string
@@ -326,10 +336,12 @@ export type Database = {
           first_seen_at?: string
           id?: string
           is_active?: boolean | null
+          job_type?: Database["public"]["Enums"]["job_type"] | null
           last_seen_at?: string
           listing_hash?: string | null
           location?: string | null
           posted_at?: string | null
+          role_category?: Database["public"]["Enums"]["role_category"] | null
           role_title?: string
           signal_type?: string
           source?: string
@@ -676,10 +688,12 @@ export type Database = {
           first_seen_at: string | null
           id: string | null
           is_active: boolean | null
+          job_type: Database["public"]["Enums"]["job_type"] | null
           last_seen_at: string | null
           listing_hash: string | null
           location: string | null
           posted_at: string | null
+          role_category: Database["public"]["Enums"]["role_category"] | null
           role_title: string | null
           signal_type: string | null
           source: string | null
@@ -701,6 +715,14 @@ export type Database = {
       }
       call_refresh_opening_signals: { Args: never; Returns: undefined }
       call_refresh_opening_signals_function: { Args: never; Returns: undefined }
+      classify_job_type: {
+        Args: { p_role_title: string; p_term: string }
+        Returns: Database["public"]["Enums"]["job_type"]
+      }
+      classify_role_category: {
+        Args: { p_role_title: string }
+        Returns: Database["public"]["Enums"]["role_category"]
+      }
       compute_listing_hash: {
         Args: {
           p_apply_url: string
@@ -718,7 +740,14 @@ export type Database = {
       update_opening_signals_is_active: { Args: never; Returns: undefined }
     }
     Enums: {
-      [_ in never]: never
+      job_type: "internship" | "new_grad"
+      role_category:
+        | "software_engineering"
+        | "product_management"
+        | "data_science"
+        | "quantitative_finance"
+        | "hardware_engineering"
+        | "other"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -845,6 +874,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      job_type: ["internship", "new_grad"],
+      role_category: [
+        "software_engineering",
+        "product_management",
+        "data_science",
+        "quantitative_finance",
+        "hardware_engineering",
+        "other",
+      ],
+    },
   },
 } as const
