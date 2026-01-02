@@ -417,6 +417,117 @@ export type Database = {
         }
         Relationships: []
       }
+      refresh_execution_log: {
+        Row: {
+          created_at: string
+          deactivated_count: number | null
+          duration_ms: number | null
+          execution_time: string
+          function_name: string
+          id: string
+          inserted_count: number | null
+          message: string | null
+          next_run_at: string | null
+          status: string
+          updated_count: number | null
+        }
+        Insert: {
+          created_at?: string
+          deactivated_count?: number | null
+          duration_ms?: number | null
+          execution_time?: string
+          function_name: string
+          id?: string
+          inserted_count?: number | null
+          message?: string | null
+          next_run_at?: string | null
+          status: string
+          updated_count?: number | null
+        }
+        Update: {
+          created_at?: string
+          deactivated_count?: number | null
+          duration_ms?: number | null
+          execution_time?: string
+          function_name?: string
+          id?: string
+          inserted_count?: number | null
+          message?: string | null
+          next_run_at?: string | null
+          status?: string
+          updated_count?: number | null
+        }
+        Relationships: []
+      }
+      refresh_run_audit: {
+        Row: {
+          error: string | null
+          finished_at: string | null
+          function_name: string
+          http_status: number | null
+          id: number
+          outcome: string
+          reason: string | null
+          rows_marked_inactive: number | null
+          rows_upserted: number | null
+          started_at: string
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string | null
+          function_name: string
+          http_status?: number | null
+          id?: number
+          outcome: string
+          reason?: string | null
+          rows_marked_inactive?: number | null
+          rows_upserted?: number | null
+          started_at?: string
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string | null
+          function_name?: string
+          http_status?: number | null
+          id?: number
+          outcome?: string
+          reason?: string | null
+          rows_marked_inactive?: number | null
+          rows_upserted?: number | null
+          started_at?: string
+        }
+        Relationships: []
+      }
+      refresh_schedule: {
+        Row: {
+          function_name: string
+          last_run_at: string | null
+          last_status: string | null
+          locked_by: string | null
+          locked_until: string | null
+          next_run_at: string
+          updated_at: string
+        }
+        Insert: {
+          function_name: string
+          last_run_at?: string | null
+          last_status?: string | null
+          locked_by?: string | null
+          locked_until?: string | null
+          next_run_at: string
+          updated_at?: string
+        }
+        Update: {
+          function_name?: string
+          last_run_at?: string | null
+          last_status?: string | null
+          locked_by?: string | null
+          locked_until?: string | null
+          next_run_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_preferences: {
         Row: {
           auth_provider: string | null
@@ -538,6 +649,14 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_refresh_lock: {
+        Args: {
+          p_function_name: string
+          p_lock_until: string
+          p_request_id: string
+        }
+        Returns: boolean
+      }
       call_refresh_opening_signals: { Args: never; Returns: undefined }
       call_refresh_opening_signals_function: { Args: never; Returns: undefined }
       compute_listing_hash: {
