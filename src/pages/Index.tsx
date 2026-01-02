@@ -12,6 +12,7 @@ import { CompaniesSection } from "@/components/landing/CompaniesSection";
 import { CompanyLogosSection } from "@/components/landing/CompanyLogosSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { FAQSection } from "@/components/landing/FAQSection";
+import { FinalCTA } from "@/components/landing/FinalCTA";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -100,6 +101,7 @@ const Index = () => {
           <CompanyLogosSection />
           <PricingSection />
           <FAQSection />
+          <FinalCTA />
         </main>
         <Footer />
       </div>
