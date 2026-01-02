@@ -31,13 +31,18 @@ export function FinalCTA() {
     <section 
       ref={ref}
       className={`
-        py-24 relative transition-all duration-1000 ease-out
+        py-24 relative transition-all duration-1000 ease-out overflow-hidden
         ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
       `}
-      style={{
-        background: 'linear-gradient(to bottom, hsl(214 95% 93%) 0%, hsl(214 95% 95%) 15%, hsl(214 95% 97%) 30%, hsl(214 95% 93%) 50%, hsl(214 95% 94%) 70%, hsl(214 95% 97%) 85%, #ffffff 100%)'
-      }}
     >
+      {/* Gradient background layer - positioned absolutely to avoid container seams */}
+      <div 
+        className="absolute inset-0 z-0"
+        style={{
+          background: 'linear-gradient(to bottom, hsl(214 95% 93%) 0%, hsl(214 95% 95%) 15%, hsl(214 95% 97%) 30%, hsl(214 95% 93%) 50%, hsl(214 95% 94%) 70%, hsl(214 95% 97%) 85%, #ffffff 100%)'
+        }}
+      />
+      
       <div className="container relative z-10">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">

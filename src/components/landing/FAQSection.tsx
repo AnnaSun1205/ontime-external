@@ -36,9 +36,9 @@ const faqs = [
 
 export function FAQSection() {
   return (
-    <section id="faq" className="py-24 bg-muted relative">
+    <section id="faq" className="py-24 bg-muted relative overflow-hidden">
       {/* Top gradient fade from white */}
-      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none" />
+      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none z-0" />
       
       <div className="container relative z-10">
         <div className="text-center mb-16">
