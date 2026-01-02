@@ -275,12 +275,15 @@ export default function ListingsTab() {
 
       switch (activeTab) {
         case "new":
+          // Hybrid approach: New = first_seen_at > lastSeenForCountry AND NOT in opening_seen
+          // This preserves "since last visit" logic while allowing users to dismiss items
           // If cutoff not loaded yet, show nothing as new (loading state)
           if (!lastSeenListingsAt) return false;
           // Use first_seen_at for New determination (matches DB query logic)
-          // Also exclude listings already in opening_seen
           const isNewByTime = firstSeen > new Date(lastSeenListingsAt);
+          // Also exclude listings already explicitly marked as seen by user
           const isNotSeen = !seenListingIds.has(listing.id);
+          // BOTH conditions must be true: new by timestamp AND not already seen
           return isNewByTime && isNotSeen;
         case "today":
           return firstSeen >= startOfToday;
@@ -323,32 +326,48 @@ export default function ListingsTab() {
 
     // Debug logs for New tab logic
     const sampleListings = countryFilteredListings.slice(0, 5);
-    console.log('[New Logic] DEBUG:', {
-      lastSeenValue: lastSeenListingsAt,
-      countryFilter: countryFilter,
-      totalListings: countryFilteredListings.length,
-      sampleListings: sampleListings.map(l => ({
-        company: l.company,
-        country: l.country,
-        firstSeenAt: l.firstSeenAt,
-        postedAt: l.postedAt,
-        location: l.location
-      }))
-    });
-
+    
+    // Count breakdown for debugging
+    let newByTimeCount = 0;
+    let seenCount = 0;
+    let newAndNotSeenCount = 0;
+    
     countryFilteredListings.forEach(listing => {
       const firstSeen = new Date(listing.firstSeenAt);
 
       // New count: use first_seen_at > last_seen_listings_at AND not in opening_seen
       const isNewByTime = lastSeenListingsAt && firstSeen > new Date(lastSeenListingsAt);
       const isNotSeen = !seenListingIds.has(listing.id);
+      
+      if (isNewByTime) newByTimeCount++;
+      if (!isNotSeen) seenCount++;
       if (isNewByTime && isNotSeen) {
+        newAndNotSeenCount++;
         newCount++;
       }
       
       if (firstSeen >= startOfToday) todayCount++;
       if (firstSeen >= twoDaysAgo) last2DaysCount++;
       if (firstSeen >= sevenDaysAgo) last7DaysCount++;
+    });
+    
+    console.log('[New Logic] DEBUG:', {
+      lastSeenValue: lastSeenListingsAt,
+      countryFilter: countryFilter,
+      totalListings: countryFilteredListings.length,
+      seenListingIdsCount: seenListingIds.size,
+      breakdown: {
+        newByTimeOnly: newByTimeCount,
+        alreadySeen: seenCount,
+        newAndNotSeen: newAndNotSeenCount
+      },
+      sampleListings: sampleListings.map(l => ({
+        company: l.company,
+        country: l.country,
+        firstSeenAt: l.firstSeenAt,
+        isNewByTime: lastSeenListingsAt ? new Date(l.firstSeenAt) > new Date(lastSeenListingsAt) : false,
+        isSeen: seenListingIds.has(l.id)
+      }))
     });
     
     console.log('[New Logic] Computed counts:', {
@@ -420,6 +439,7 @@ export default function ListingsTab() {
     }
 
     // Get IDs from currently filtered/visible listings (respects search, country, time tab)
+    // This ensures we only mark what the user is currently viewing
     const idsToMarkSeen = filteredListings.map(listing => listing.id);
     
     if (idsToMarkSeen.length === 0) {
@@ -432,6 +452,8 @@ export default function ListingsTab() {
     const now = new Date().toISOString();
     
     // Upsert into opening_seen for each listing ID
+    // NOTE: We do NOT update last_seen_listings_at_* here - that's only for global "last visit" tracking
+    // opening_seen is for per-listing "dismissed" tracking
     const rowsToInsert = idsToMarkSeen.map(openingId => ({
       user_id: userId,
       opening_id: openingId,
@@ -460,12 +482,14 @@ export default function ListingsTab() {
   };
 
   const isNewListing = (listing: Listing) => {
+    // Hybrid approach: New = first_seen_at > lastSeenForCountry AND NOT in opening_seen
     // If cutoff not loaded yet, nothing is new
     if (!lastSeenListingsAt) return false;
     // Use first_seen_at for New determination (matches DB query logic)
-    // Also exclude listings already in opening_seen
     const isNewByTime = new Date(listing.firstSeenAt) > new Date(lastSeenListingsAt);
+    // Also exclude listings already explicitly marked as seen by user
     const isNotSeen = !seenListingIds.has(listing.id);
+    // BOTH conditions must be true: new by timestamp AND not already seen
     return isNewByTime && isNotSeen;
   };
 
