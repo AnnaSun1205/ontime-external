@@ -31,17 +31,14 @@ export function FinalCTA() {
     <section 
       ref={ref}
       className={`
-        py-24 bg-muted relative transition-all duration-1000 ease-out
+        py-24 bg-gradient-to-b from-muted to-white relative transition-all duration-1000 ease-out
         ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
       `}
     >
-      {/* Top gradient fade from white */}
-      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none" />
-      
       <div className="container relative z-10">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Ready to track your applications on time?
+            Apply on time. Every time.
           </h2>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
