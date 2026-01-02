@@ -546,7 +546,7 @@ export default function ListingsTab() {
       </div>
 
       {/* Time tabs */}
-      <div className="flex items-center gap-4 mb-6 flex-wrap">
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
         <div className="inline-flex gap-0 p-1 bg-muted rounded-lg">
           {tabs.map((tab) => (
             <button
@@ -567,14 +567,14 @@ export default function ListingsTab() {
           ))}
         </div>
 
-        {/* Mark all as seen button - always visible but disabled when no new listings */}
+        {/* Mark all as seen button - inline with tabs, disabled when no items in current tab */}
         <button
           onClick={handleMarkAllAsSeen}
-          disabled={tabCounts.new === 0}
+          disabled={filteredListings.length === 0}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ml-auto",
-            tabCounts.new > 0
-              ? "text-muted-foreground hover:bg-muted"
+            "flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium transition-colors",
+            filteredListings.length > 0
+              ? "text-muted-foreground hover:text-foreground"
               : "text-muted-foreground/50 cursor-not-allowed"
           )}
         >
