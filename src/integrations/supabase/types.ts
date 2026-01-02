@@ -171,6 +171,48 @@ export type Database = {
         }
         Relationships: []
       }
+      opening_inbox: {
+        Row: {
+          created_at: string
+          opening_id: string
+          section: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          opening_id: string
+          section?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          opening_id?: string
+          section?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opening_inbox_opening_id_fkey"
+            columns: ["opening_id"]
+            isOneToOne: false
+            referencedRelation: "opening_signals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opening_inbox_opening_id_fkey"
+            columns: ["opening_id"]
+            isOneToOne: false
+            referencedRelation: "opening_signals_main"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opening_seen: {
         Row: {
           opening_id: string
