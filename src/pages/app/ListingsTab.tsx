@@ -455,8 +455,25 @@ export default function ListingsTab() {
     });
   }, [categoryFilteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
 
-  // Final filtered listings (for display)
-  const filteredListings = timeFilteredListings;
+  // Final filtered listings (for display) - sorted with unread first
+  const filteredListings = useMemo(() => {
+    // Create a sorted copy: unread listings first, then read listings
+    // Within each group, maintain time-based ordering (posted_at DESC, fallback to first_seen_at DESC)
+    return [...timeFilteredListings].sort((a, b) => {
+      const aUnread = !seenListingIds.has(a.id);
+      const bUnread = !seenListingIds.has(b.id);
+      
+      // Primary sort: unread first
+      if (aUnread !== bUnread) {
+        return aUnread ? -1 : 1; // unread (true) comes before read (false)
+      }
+      
+      // Secondary sort: time-based (posted_at DESC, fallback to first_seen_at DESC)
+      const aTime = a.postedAt ? new Date(a.postedAt).getTime() : new Date(a.firstSeenAt).getTime();
+      const bTime = b.postedAt ? new Date(b.postedAt).getTime() : new Date(b.firstSeenAt).getTime();
+      return bTime - aTime; // descending order (newer first)
+    });
+  }, [timeFilteredListings, seenListingIds]);
 
   // Calculate counts for Type filter (reflects Country + Search) - use database columns
   const typeCounts = useMemo(() => {
@@ -563,6 +580,14 @@ export default function ListingsTab() {
     // since it fetches from opening_inbox on mount and tab change
   };
 
+  // Check if listing is unread (not marked as seen by user)
+  // Used for highlighting (badge + background) across all tabs
+  const isUnread = (listing: Listing) => {
+    return !seenListingIds.has(listing.id);
+  };
+
+  // Check if listing qualifies for "New" tab (time-based + unread)
+  // Used for filtering the "New" tab only
   const isNewListing = (listing: Listing) => {
     // Hybrid approach: New = first_seen_at > lastSeenForCountry AND NOT in opening_seen
     // If cutoff not loaded yet, nothing is new
@@ -881,7 +906,7 @@ export default function ListingsTab() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filteredListings.map((listing) => {
           const isSaved = savedListings.has(listing.id);
-              const isNew = isNewListing(listing);
+              const isUnreadListing = isUnread(listing);
               const isInInbox = inboxListingIds.has(listing.id);
           return (
             <div
@@ -889,7 +914,7 @@ export default function ListingsTab() {
                   className={cn(
                     "border rounded-xl p-4 shadow-sm hover:shadow-md transition-all",
                     isInInbox && "opacity-60",
-                    isNew && !isInInbox
+                    isUnreadListing && !isInInbox
                       ? "bg-amber-50 border-amber-200"
                       : "bg-card border-border"
                   )}
@@ -897,7 +922,7 @@ export default function ListingsTab() {
               <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-base">{listing.company}</h3>
-                      {isNew && (
+                      {isUnreadListing && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
                           <Zap className="w-3 h-3" />
                           New
