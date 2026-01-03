@@ -600,11 +600,19 @@ export default function ListingsTab() {
     return isNewByTime && isNotSeen;
   };
 
-  // Check if current tab has any unread listings (yellow badges)
+  // Check if current tab has listings that can be marked as seen
+  // In "New" tab: check for listings that qualify for "New" tab
+  // In other tabs: check for unread listings
   // Must be defined before handleMarkAllAsSeen uses it
-  const hasUnreadInCurrentTab = useMemo(() => {
-    return filteredListings.some(listing => isUnread(listing));
-  }, [filteredListings, seenListingIds]);
+  const hasListingsToMarkSeen = useMemo(() => {
+    if (activeTab === "new") {
+      // In "New" tab: only mark listings that qualify for "New" tab (time-based + unread)
+      return filteredListings.some(listing => isNewListing(listing));
+    } else {
+      // In other tabs: mark all unread (yellow) listings
+      return filteredListings.some(listing => isUnread(listing));
+    }
+  }, [filteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
 
   const handleMarkAllAsSeen = async () => {
     if (!userId) {
@@ -612,19 +620,26 @@ export default function ListingsTab() {
       return;
     }
 
-    // Guard: only proceed if there are unread listings in the current tab
-    if (!hasUnreadInCurrentTab) {
+    // Guard: only proceed if there are listings to mark as seen
+    if (!hasListingsToMarkSeen) {
       return;
     }
 
-    // Get IDs from currently filtered/visible unread listings (respects search, country, time tab)
-    // This marks all unread listings that the user is currently viewing
+    // Get IDs based on current tab:
+    // - In "New" tab: mark listings that qualify for "New" tab (time-based + unread)
+    // - In other tabs: mark all unread (yellow) listings
     const idsToMarkSeen = filteredListings
-      .filter(listing => isUnread(listing))
+      .filter(listing => {
+        if (activeTab === "new") {
+          return isNewListing(listing);
+        } else {
+          return isUnread(listing);
+        }
+      })
       .map(listing => listing.id);
     
     if (idsToMarkSeen.length === 0) {
-      // This should not happen if hasUnreadInCurrentTab is working correctly
+      // This should not happen if hasListingsToMarkSeen is working correctly
       return;
     }
 
@@ -659,7 +674,8 @@ export default function ListingsTab() {
     });
 
     console.log(`[Mark as Seen] Successfully marked ${idsToMarkSeen.length} listings as seen`);
-    toast.success(`Marked ${idsToMarkSeen.length} unread listing${idsToMarkSeen.length === 1 ? '' : 's'} as seen`);
+    const listingType = activeTab === "new" ? "new" : "unread";
+    toast.success(`Marked ${idsToMarkSeen.length} ${listingType} listing${idsToMarkSeen.length === 1 ? '' : 's'} as seen`);
   };
 
   const tabs: { id: TimeTab; label: string; count: number }[] = [
@@ -868,14 +884,14 @@ export default function ListingsTab() {
           ))}
         </div>
 
-        {/* Mark all as seen button - inline with tabs, disabled when no unread listings in current tab */}
+        {/* Mark all as seen button - inline with tabs, disabled when no listings to mark in current tab */}
         <button
           onClick={handleMarkAllAsSeen}
-          disabled={!hasUnreadInCurrentTab}
-          title={!hasUnreadInCurrentTab ? "No unread listings in this view" : undefined}
+          disabled={!hasListingsToMarkSeen}
+          title={!hasListingsToMarkSeen ? (activeTab === "new" ? "No new listings in this view" : "No unread listings in this view") : undefined}
           className={cn(
             "flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium transition-colors",
-            hasUnreadInCurrentTab
+            hasListingsToMarkSeen
               ? "text-muted-foreground hover:text-foreground"
               : "text-muted-foreground/50 cursor-not-allowed opacity-50"
           )}
