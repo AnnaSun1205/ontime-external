@@ -1,24 +1,35 @@
-import { Star } from "lucide-react";
+import { Star, MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+
+const avatarColors = [
+  "bg-gradient-to-br from-rose-400 to-pink-500",
+  "bg-gradient-to-br from-violet-400 to-purple-500",
+  "bg-gradient-to-br from-cyan-400 to-blue-500",
+  "bg-gradient-to-br from-emerald-400 to-green-500",
+];
 
 const reviews = [
   {
     name: "John W.",
+    location: "San Francisco, CA",
     review: "Finally stopped missing application deadlines. This tool is a game-changer for internship hunting.",
     rating: 5,
   },
   {
     name: "Sarah M.",
+    location: "New York, NY",
     review: "The 7-day early alerts gave me time to prep my resume before roles opened. Got 3 interviews!",
     rating: 5,
   },
   {
     name: "Alex K.",
+    location: "Austin, TX",
     review: "Simple, clean, and actually useful. Wish I had this during my freshman year.",
     rating: 5,
   },
   {
     name: "Emily R.",
+    location: "Seattle, WA",
     review: "Tracking 50+ companies manually was exhausting. Now I just check my dashboard each morning.",
     rating: 5,
   },
@@ -55,12 +66,20 @@ function ReviewCard({
           "{review.review}"
         </p>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-surface-soft flex items-center justify-center">
-            <span className="text-sm font-semibold text-foreground">
+          <div
+            className={`w-10 h-10 rounded-full flex items-center justify-center ${avatarColors[index % avatarColors.length]}`}
+          >
+            <span className="text-sm font-semibold text-white">
               {review.name.charAt(0)}
             </span>
           </div>
-          <span className="font-medium text-foreground">{review.name}</span>
+          <div className="flex flex-col">
+            <span className="font-medium text-foreground">{review.name}</span>
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {review.location}
+            </span>
+          </div>
         </div>
       </div>
     </div>
