@@ -25,20 +25,26 @@ type TimeTab = "new" | "today" | "last2days" | "last7days" | "all";
 type CountryFilter = "canada" | "us";
 type RoleCategory = "software_engineering" | "product_management" | "data_science" | "quantitative_finance" | "hardware_engineering" | "other";
 type JobType = "internship" | "new_grad";
+type TypeFilter = "internship" | "newgrad" | "all";
+type CategoryFilter = "swe" | "pm" | "data" | "quant" | "hardware" | "other" | "all";
 
-const ROLE_CATEGORIES: { id: RoleCategory; label: string; shortLabel: string }[] = [
-  { id: "software_engineering", label: "Software Engineering", shortLabel: "SWE" },
-  { id: "product_management", label: "Product Management", shortLabel: "PM" },
-  { id: "data_science", label: "Data Science / AI / ML", shortLabel: "Data/AI" },
-  { id: "quantitative_finance", label: "Quantitative Finance", shortLabel: "Quant" },
-  { id: "hardware_engineering", label: "Hardware Engineering", shortLabel: "Hardware" },
-  { id: "other", label: "Other", shortLabel: "Other" },
-];
+// Map database role_category to filter category
+function roleCategoryToFilter(roleCategory: RoleCategory): CategoryFilter {
+  const map: Record<RoleCategory, CategoryFilter> = {
+    software_engineering: "swe",
+    product_management: "pm",
+    data_science: "data",
+    quantitative_finance: "quant",
+    hardware_engineering: "hardware",
+    other: "other",
+  };
+  return map[roleCategory];
+}
 
-const JOB_TYPES: { id: JobType; label: string }[] = [
-  { id: "internship", label: "Internship" },
-  { id: "new_grad", label: "New Grad" },
-];
+// Map database job_type to filter type
+function jobTypeToFilter(jobType: JobType): "internship" | "newgrad" {
+  return jobType === "new_grad" ? "newgrad" : "internship";
+}
 
 // Canadian province/territory patterns
 const CANADA_PATTERNS = [
@@ -67,6 +73,99 @@ function classifyCountry(location: string): "canada" | "us" | "unknown" {
   return "unknown";
 }
 
+// Infer job type from term and role_title
+function inferJobType(term: string, roleTitle: string): "internship" | "newgrad" {
+  const termLower = term.toLowerCase();
+  const roleLower = roleTitle.toLowerCase();
+  
+  // Check for internship indicators
+  if (
+    termLower.includes("summer") ||
+    termLower.includes("fall") ||
+    termLower.includes("winter") ||
+    termLower.includes("spring") ||
+    roleLower.includes("intern") ||
+    roleLower.includes("internship")
+  ) {
+    return "internship";
+  }
+  
+  // Check for new grad indicators
+  if (
+    roleLower.includes("new grad") ||
+    roleLower.includes("new graduate") ||
+    roleLower.includes("entry level") ||
+    roleLower.includes("entry-level") ||
+    roleLower.includes("new grad")
+  ) {
+    return "newgrad";
+  }
+  
+  // Default to internship if term suggests a season
+  return "internship";
+}
+
+// Infer category from role_title
+function inferCategory(roleTitle: string): CategoryFilter {
+  const roleLower = roleTitle.toLowerCase();
+  
+  // SWE patterns
+  if (
+    roleLower.includes("software engineer") ||
+    roleLower.includes("swe") ||
+    roleLower.includes("software developer") ||
+    roleLower.includes("backend") ||
+    roleLower.includes("frontend") ||
+    roleLower.includes("full stack") ||
+    roleLower.includes("fullstack") ||
+    roleLower.includes("engineer") && !roleLower.includes("hardware") && !roleLower.includes("data")
+  ) {
+    return "swe";
+  }
+  
+  // PM patterns
+  if (
+    roleLower.includes("product manager") ||
+    roleLower.includes(" pm ") ||
+    roleLower.includes("product")
+  ) {
+    return "pm";
+  }
+  
+  // Data/AI patterns
+  if (
+    roleLower.includes("data") ||
+    roleLower.includes("data scientist") ||
+    roleLower.includes("ml") ||
+    roleLower.includes("machine learning") ||
+    roleLower.includes("ai") ||
+    roleLower.includes("artificial intelligence") ||
+    roleLower.includes("analyst") ||
+    roleLower.includes("data engineer")
+  ) {
+    return "data";
+  }
+  
+  // Quant patterns
+  if (
+    roleLower.includes("quant") ||
+    roleLower.includes("quantitative") ||
+    roleLower.includes("trading")
+  ) {
+    return "quant";
+  }
+  
+  // Hardware patterns
+  if (
+    roleLower.includes("hardware") ||
+    roleLower.includes("hw engineer")
+  ) {
+    return "hardware";
+  }
+  
+  return "other";
+}
+
 export default function ListingsTab() {
   const [searchQuery, setSearchQuery] = useState("");
   const [savedListings, setSavedListings] = useState<Set<string>>(new Set());
@@ -78,14 +177,8 @@ export default function ListingsTab() {
     const saved = localStorage.getItem("listings-country-filter");
     return (saved === "canada" || saved === "us") ? saved : "us";
   });
-  const [roleCategory, setRoleCategory] = useState<RoleCategory>(() => {
-    const saved = localStorage.getItem("listings-role-category");
-    return ROLE_CATEGORIES.some(c => c.id === saved) ? saved as RoleCategory : "software_engineering";
-  });
-  const [jobType, setJobType] = useState<JobType>(() => {
-    const saved = localStorage.getItem("listings-job-type");
-    return saved === "internship" || saved === "new_grad" ? saved : "internship";
-  });
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [lastSeenListingsAtUs, setLastSeenListingsAtUs] = useState<string | null>(null);
   const [lastSeenListingsAtCa, setLastSeenListingsAtCa] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -98,9 +191,9 @@ export default function ListingsTab() {
   // Save filters to localStorage
   useEffect(() => {
     localStorage.setItem("listings-country-filter", countryFilter);
-    localStorage.setItem("listings-role-category", roleCategory);
-    localStorage.setItem("listings-job-type", jobType);
-  }, [countryFilter, roleCategory, jobType]);
+    localStorage.setItem("listings-type-filter", typeFilter);
+    localStorage.setItem("listings-category-filter", categoryFilter);
+  }, [countryFilter, typeFilter, categoryFilter]);
 
   // Fetch opening_inbox data to check which listings are already in inbox
   useEffect(() => {
@@ -271,16 +364,24 @@ export default function ListingsTab() {
     fetchListings();
   }, []);
 
-  // Filter by role category and job type first
-  const categoryFilteredListings = useMemo(() => {
-    return listings.filter(listing => 
-      listing.roleCategory === roleCategory && listing.jobType === jobType
+  // Filter pipeline: search -> country -> type -> category -> time tab
+  // Step 1: Search filter (applies to all listings)
+  const searchedListings = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return listings;
+    }
+    const query = searchQuery.toLowerCase();
+    return listings.filter(
+      (listing) =>
+        listing.company.toLowerCase().includes(query) ||
+        listing.role.toLowerCase().includes(query) ||
+        listing.location.toLowerCase().includes(query)
     );
-  }, [listings, roleCategory, jobType]);
+  }, [searchQuery, listings]);
 
-  // Filter by country - use DB country column, fallback to location parsing
+  // Step 2: Country filter
   const countryFilteredListings = useMemo(() => {
-    return categoryFilteredListings.filter(listing => {
+    return searchedListings.filter(listing => {
       // Prefer DB country column if available
       const dbCountry = listing.country;
       if (dbCountry) {
@@ -296,9 +397,27 @@ export default function ListingsTab() {
       // Include if matches filter, or if unknown (show in both)
       return parsedCountry === countryFilter || parsedCountry === "unknown";
     });
-  }, [categoryFilteredListings, countryFilter]);
+  }, [searchedListings, countryFilter]);
 
-  // Filter by time tab
+  // Step 3: Type filter (Internship / New Grad) - use database column
+  const typeFilteredListings = useMemo(() => {
+    if (typeFilter === "all") return countryFilteredListings;
+    return countryFilteredListings.filter(listing => {
+      const listingJobType = jobTypeToFilter(listing.jobType);
+      return listingJobType === typeFilter;
+    });
+  }, [countryFilteredListings, typeFilter]);
+
+  // Step 4: Category filter (SWE / PM / Data/AI / Quant / Hardware / Other) - use database column
+  const categoryFilteredListings = useMemo(() => {
+    if (categoryFilter === "all") return typeFilteredListings;
+    return typeFilteredListings.filter(listing => {
+      const listingCategory = roleCategoryToFilter(listing.roleCategory);
+      return listingCategory === categoryFilter;
+    });
+  }, [typeFilteredListings, categoryFilter]);
+
+  // Step 5: Time tab filter
   const timeFilteredListings = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -307,10 +426,9 @@ export default function ListingsTab() {
     const sevenDaysAgo = new Date(startOfToday);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    return countryFilteredListings.filter(listing => {
+    return categoryFilteredListings.filter(listing => {
       // Use first_seen_at for New logic (as per DB query)
       const firstSeen = new Date(listing.firstSeenAt);
-      const postedAt = listing.postedAt ? new Date(listing.postedAt) : null;
 
       switch (activeTab) {
         case "new":
@@ -335,27 +453,30 @@ export default function ListingsTab() {
           return true;
       }
     });
-  }, [countryFilteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
+  }, [categoryFilteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
 
-  // Search filter - when active, searches across ALL listings (ignores country + time tab)
-  const filteredListings = useMemo(() => {
-    if (!searchQuery.trim()) {
-      // No search: use normal country + time tab filtering
-      return timeFilteredListings;
-    }
-    
-    // Search is active: search across ALL listings (ignore country and time tab)
-    const query = searchQuery.toLowerCase();
-    return listings.filter(
-      (listing) =>
-        listing.company.toLowerCase().includes(query) ||
-        listing.role.toLowerCase().includes(query) ||
-        listing.location.toLowerCase().includes(query)
-    );
-  }, [searchQuery, timeFilteredListings, listings]);
+  // Final filtered listings (for display)
+  const filteredListings = timeFilteredListings;
 
-  // Calculate counts for tabs
-  // When search is active, counts reflect search results; otherwise use country-filtered listings
+  // Calculate counts for Type filter (reflects Country + Search) - use database columns
+  const typeCounts = useMemo(() => {
+    const internshipCount = countryFilteredListings.filter(l => jobTypeToFilter(l.jobType) === "internship").length;
+    const newgradCount = countryFilteredListings.filter(l => jobTypeToFilter(l.jobType) === "newgrad").length;
+    return { internship: internshipCount, newgrad: newgradCount };
+  }, [countryFilteredListings]);
+
+  // Calculate counts for Category filter (reflects Country + Type + Search) - use database columns
+  const categoryCounts = useMemo(() => {
+    const sweCount = typeFilteredListings.filter(l => roleCategoryToFilter(l.roleCategory) === "swe").length;
+    const pmCount = typeFilteredListings.filter(l => roleCategoryToFilter(l.roleCategory) === "pm").length;
+    const dataCount = typeFilteredListings.filter(l => roleCategoryToFilter(l.roleCategory) === "data").length;
+    const quantCount = typeFilteredListings.filter(l => roleCategoryToFilter(l.roleCategory) === "quant").length;
+    const hardwareCount = typeFilteredListings.filter(l => roleCategoryToFilter(l.roleCategory) === "hardware").length;
+    const otherCount = typeFilteredListings.filter(l => roleCategoryToFilter(l.roleCategory) === "other").length;
+    return { swe: sweCount, pm: pmCount, data: dataCount, quant: quantCount, hardware: hardwareCount, other: otherCount };
+  }, [typeFilteredListings]);
+
+  // Calculate counts for time tabs (reflects Country + Type + Category + Search)
   const tabCounts = useMemo(() => {
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -364,18 +485,13 @@ export default function ListingsTab() {
     const sevenDaysAgo = new Date(startOfToday);
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    // Use search results if search is active, otherwise use country-filtered listings
-    const listingsToCount = searchQuery.trim() ? filteredListings : countryFilteredListings;
+    // Counts reflect categoryFilteredListings (after country + type + category + search)
+    const listingsToCount = categoryFilteredListings;
 
     let newCount = 0;
     let todayCount = 0;
     let last2DaysCount = 0;
     let last7DaysCount = 0;
-
-    // Count breakdown for debugging (only when not searching)
-    let newByTimeCount = 0;
-    let seenCount = 0;
-    let newAndNotSeenCount = 0;
     
     listingsToCount.forEach(listing => {
       const firstSeen = new Date(listing.firstSeenAt);
@@ -384,48 +500,13 @@ export default function ListingsTab() {
       const isNewByTime = lastSeenListingsAt && firstSeen > new Date(lastSeenListingsAt);
       const isNotSeen = !seenListingIds.has(listing.id);
       
-      if (isNewByTime) newByTimeCount++;
-      if (!isNotSeen) seenCount++;
       if (isNewByTime && isNotSeen) {
-        newAndNotSeenCount++;
         newCount++;
       }
       
       if (firstSeen >= startOfToday) todayCount++;
       if (firstSeen >= twoDaysAgo) last2DaysCount++;
       if (firstSeen >= sevenDaysAgo) last7DaysCount++;
-    });
-    
-    // Debug logs (only when not searching to avoid spam)
-    if (!searchQuery.trim()) {
-      const sampleListings = countryFilteredListings.slice(0, 5);
-      console.log('[New Logic] DEBUG:', {
-        lastSeenValue: lastSeenListingsAt,
-        countryFilter: countryFilter,
-        totalListings: countryFilteredListings.length,
-        seenListingIdsCount: seenListingIds.size,
-        breakdown: {
-          newByTimeOnly: newByTimeCount,
-          alreadySeen: seenCount,
-          newAndNotSeen: newAndNotSeenCount
-        },
-        sampleListings: sampleListings.map(l => ({
-          company: l.company,
-          country: l.country,
-          firstSeenAt: l.firstSeenAt,
-          isNewByTime: lastSeenListingsAt ? new Date(l.firstSeenAt) > new Date(lastSeenListingsAt) : false,
-          isSeen: seenListingIds.has(l.id)
-        }))
-      });
-    }
-    
-    console.log('[New Logic] Computed counts:', {
-      new: newCount,
-      today: todayCount,
-      last2days: last2DaysCount,
-      last7days: last7DaysCount,
-      all: listingsToCount.length,
-      isSearching: !!searchQuery.trim()
     });
 
     return {
@@ -435,7 +516,7 @@ export default function ListingsTab() {
       last7days: last7DaysCount,
       all: listingsToCount.length
     };
-  }, [countryFilteredListings, filteredListings, lastSeenListingsAt, seenListingIds, searchQuery]);
+  }, [categoryFilteredListings, lastSeenListingsAt, seenListingIds]);
 
   const handleSave = (listing: Listing) => {
     setSavedListings((prev) => {
@@ -564,44 +645,6 @@ export default function ListingsTab() {
     { id: "all", label: "All", count: tabCounts.all },
   ];
 
-  // Calculate category counts for display
-  const categoryCounts = useMemo(() => {
-    const counts: Record<RoleCategory, number> = {
-      software_engineering: 0,
-      product_management: 0,
-      data_science: 0,
-      quantitative_finance: 0,
-      hardware_engineering: 0,
-      other: 0,
-    };
-    
-    // Filter by current job type, then count by category
-    listings
-      .filter(l => l.jobType === jobType)
-      .forEach(l => {
-        counts[l.roleCategory]++;
-      });
-    
-    return counts;
-  }, [listings, jobType]);
-
-  // Calculate job type counts for display
-  const jobTypeCounts = useMemo(() => {
-    const counts: Record<JobType, number> = {
-      internship: 0,
-      new_grad: 0,
-    };
-    
-    // Filter by current category, then count by job type
-    listings
-      .filter(l => l.roleCategory === roleCategory)
-      .forEach(l => {
-        counts[l.jobType]++;
-      });
-    
-    return counts;
-  }, [listings, roleCategory]);
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -619,55 +662,7 @@ export default function ListingsTab() {
         />
       </div>
 
-      {/* Role Category filter */}
-      <div className="mb-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Category</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {ROLE_CATEGORIES.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setRoleCategory(cat.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                roleCategory === cat.id
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80"
-              )}
-            >
-              {cat.shortLabel}
-              <span className="ml-1.5 text-xs opacity-70">({categoryCounts[cat.id]})</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Job Type filter */}
-      <div className="mb-4">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</span>
-        </div>
-        <div className="inline-flex gap-0 p-1 bg-muted rounded-lg">
-          {JOB_TYPES.map((type) => (
-            <button
-              key={type.id}
-              onClick={() => setJobType(type.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                jobType === type.id
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {type.label}
-              <span className="ml-1.5 text-xs opacity-70">({jobTypeCounts[type.id]})</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Country filter */}
+      {/* Filter 1: Country */}
       <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg">
         <button
           onClick={() => setCountryFilter("canada")}
@@ -690,6 +685,124 @@ export default function ListingsTab() {
           )}
         >
           US
+        </button>
+      </div>
+
+      {/* Filter 2: Type (Internship / New Grad) */}
+      <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg">
+        <button
+          onClick={() => setTypeFilter("all")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            typeFilter === "all"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All
+        </button>
+        <button
+          onClick={() => setTypeFilter("internship")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            typeFilter === "internship"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Internship ({typeCounts.internship})
+        </button>
+        <button
+          onClick={() => setTypeFilter("newgrad")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            typeFilter === "newgrad"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          New Grad ({typeCounts.newgrad})
+        </button>
+      </div>
+
+      {/* Filter 3: Category (SWE / PM / Data/AI / Quant / Hardware / Other) */}
+      <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg flex-wrap">
+        <button
+          onClick={() => setCategoryFilter("all")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "all"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All
+        </button>
+        <button
+          onClick={() => setCategoryFilter("swe")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "swe"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          SWE ({categoryCounts.swe})
+        </button>
+        <button
+          onClick={() => setCategoryFilter("pm")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "pm"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          PM ({categoryCounts.pm})
+        </button>
+        <button
+          onClick={() => setCategoryFilter("data")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "data"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Data/AI ({categoryCounts.data})
+        </button>
+        <button
+          onClick={() => setCategoryFilter("quant")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "quant"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Quant ({categoryCounts.quant})
+        </button>
+        <button
+          onClick={() => setCategoryFilter("hardware")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "hardware"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Hardware ({categoryCounts.hardware})
+        </button>
+        <button
+          onClick={() => setCategoryFilter("other")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            categoryFilter === "other"
+              ? "bg-foreground text-background"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Other ({categoryCounts.other})
         </button>
       </div>
 
