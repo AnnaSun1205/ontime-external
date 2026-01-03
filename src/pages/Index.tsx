@@ -11,6 +11,7 @@ import { ProductPreviewSection } from "@/components/landing/ProductPreviewSectio
 import { CompaniesSection } from "@/components/landing/CompaniesSection";
 import { CompanyLogosSection } from "@/components/landing/CompanyLogosSection";
 import { PricingSection } from "@/components/landing/PricingSection";
+import { ReviewsSection } from "@/components/landing/ReviewsSection";
 import { FAQSection } from "@/components/landing/FAQSection";
 import { FinalCTA } from "@/components/landing/FinalCTA";
 
@@ -99,6 +100,7 @@ const Index = () => {
           <ProductPreviewSection />
           <CompaniesSection />
           <CompanyLogosSection />
+          <ReviewsSection />
           <PricingSection />
           <FAQSection />
           <FinalCTA />
