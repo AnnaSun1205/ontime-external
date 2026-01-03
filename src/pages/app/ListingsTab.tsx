@@ -663,70 +663,84 @@ export default function ListingsTab() {
       </div>
 
       {/* Filter 1: Country */}
-      <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg">
-        <button
-          onClick={() => setCountryFilter("canada")}
-          className={cn(
-            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-            countryFilter === "canada"
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Canada
-        </button>
-        <button
-          onClick={() => setCountryFilter("us")}
-          className={cn(
-            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-            countryFilter === "us"
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          US
-        </button>
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Country</span>
+        </div>
+        <div className="inline-flex gap-0 p-1 bg-muted rounded-lg">
+          <button
+            onClick={() => setCountryFilter("canada")}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              countryFilter === "canada"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Canada
+          </button>
+          <button
+            onClick={() => setCountryFilter("us")}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              countryFilter === "us"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            US
+          </button>
+        </div>
       </div>
 
       {/* Filter 2: Type (Internship / New Grad) */}
-      <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg">
-        <button
-          onClick={() => setTypeFilter("all")}
-          className={cn(
-            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-            typeFilter === "all"
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          All
-        </button>
-        <button
-          onClick={() => setTypeFilter("internship")}
-          className={cn(
-            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-            typeFilter === "internship"
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          Internship ({typeCounts.internship})
-        </button>
-        <button
-          onClick={() => setTypeFilter("newgrad")}
-          className={cn(
-            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-            typeFilter === "newgrad"
-              ? "bg-foreground text-background"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          New Grad ({typeCounts.newgrad})
-        </button>
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Type</span>
+        </div>
+        <div className="inline-flex gap-0 p-1 bg-muted rounded-lg">
+          <button
+            onClick={() => setTypeFilter("all")}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              typeFilter === "all"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            All
+          </button>
+          <button
+            onClick={() => setTypeFilter("internship")}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              typeFilter === "internship"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Internship ({typeCounts.internship})
+          </button>
+          <button
+            onClick={() => setTypeFilter("newgrad")}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              typeFilter === "newgrad"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            New Grad ({typeCounts.newgrad})
+          </button>
+        </div>
       </div>
 
       {/* Filter 3: Category (SWE / PM / Data/AI / Quant / Hardware / Other) */}
-      <div className="inline-flex gap-0 p-1 mb-4 bg-muted rounded-lg flex-wrap">
+      <div className="mb-4">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Category</span>
+        </div>
+        <div className="inline-flex gap-0 p-1 bg-muted rounded-lg flex-wrap">
         <button
           onClick={() => setCategoryFilter("all")}
           className={cn(
@@ -804,6 +818,7 @@ export default function ListingsTab() {
         >
           Other ({categoryCounts.other})
         </button>
+        </div>
       </div>
 
       {/* Time tabs */}
