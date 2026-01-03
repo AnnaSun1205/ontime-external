@@ -600,11 +600,11 @@ export default function ListingsTab() {
     return isNewByTime && isNotSeen;
   };
 
-  // Check if current tab has any NEW listings (yellow badges)
+  // Check if current tab has any unread listings (yellow badges)
   // Must be defined before handleMarkAllAsSeen uses it
-  const hasNewInCurrentTab = useMemo(() => {
-    return filteredListings.some(listing => isNewListing(listing));
-  }, [filteredListings, lastSeenListingsAt, seenListingIds]);
+  const hasUnreadInCurrentTab = useMemo(() => {
+    return filteredListings.some(listing => isUnread(listing));
+  }, [filteredListings, seenListingIds]);
 
   const handleMarkAllAsSeen = async () => {
     if (!userId) {
@@ -612,19 +612,19 @@ export default function ListingsTab() {
       return;
     }
 
-    // Guard: only proceed if there are NEW listings in the current tab
-    if (!hasNewInCurrentTab) {
+    // Guard: only proceed if there are unread listings in the current tab
+    if (!hasUnreadInCurrentTab) {
       return;
     }
 
-    // Get IDs from currently filtered/visible NEW listings only (respects search, country, time tab)
-    // This ensures we only mark NEW listings that the user is currently viewing
+    // Get IDs from currently filtered/visible unread listings (respects search, country, time tab)
+    // This marks all unread listings that the user is currently viewing
     const idsToMarkSeen = filteredListings
-      .filter(listing => isNewListing(listing))
+      .filter(listing => isUnread(listing))
       .map(listing => listing.id);
     
     if (idsToMarkSeen.length === 0) {
-      // This should not happen if hasNewInCurrentTab is working correctly
+      // This should not happen if hasUnreadInCurrentTab is working correctly
       return;
     }
 
@@ -659,7 +659,7 @@ export default function ListingsTab() {
     });
 
     console.log(`[Mark as Seen] Successfully marked ${idsToMarkSeen.length} listings as seen`);
-    toast.success(`Marked ${idsToMarkSeen.length} ${activeTab === "new" ? "new" : activeTab} listings as seen`);
+    toast.success(`Marked ${idsToMarkSeen.length} unread listing${idsToMarkSeen.length === 1 ? '' : 's'} as seen`);
   };
 
   const tabs: { id: TimeTab; label: string; count: number }[] = [
@@ -868,14 +868,14 @@ export default function ListingsTab() {
           ))}
         </div>
 
-        {/* Mark all as seen button - inline with tabs, disabled when no NEW listings in current tab */}
+        {/* Mark all as seen button - inline with tabs, disabled when no unread listings in current tab */}
         <button
           onClick={handleMarkAllAsSeen}
-          disabled={!hasNewInCurrentTab}
-          title={!hasNewInCurrentTab ? "No new listings in this view" : undefined}
+          disabled={!hasUnreadInCurrentTab}
+          title={!hasUnreadInCurrentTab ? "No unread listings in this view" : undefined}
           className={cn(
             "flex items-center gap-1.5 px-2 py-1.5 text-sm font-medium transition-colors",
-            hasNewInCurrentTab
+            hasUnreadInCurrentTab
               ? "text-muted-foreground hover:text-foreground"
               : "text-muted-foreground/50 cursor-not-allowed opacity-50"
           )}
