@@ -1,10 +1,5 @@
 import { Star, MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
-import avatarJohn from "@/assets/avatars/avatar-john.png";
-import avatarSarah from "@/assets/avatars/avatar-sarah.png";
-import avatarAlex from "@/assets/avatars/avatar-alex.png";
-import avatarEmily from "@/assets/avatars/avatar-emily.png";
-import avatarRaj from "@/assets/avatars/avatar-raj.png";
 
 const reviews = [
   {
@@ -12,35 +7,42 @@ const reviews = [
     location: "San Francisco, CA",
     review: "Finally stopped missing application deadlines. This tool is a game-changer for internship hunting.",
     rating: 5,
-    avatar: avatarJohn,
+    emoji: "👨‍💼",
   },
   {
     name: "Sarah M.",
     location: "New York, NY",
     review: "The 7-day early alerts gave me time to prep my resume before roles opened. Got 3 interviews!",
     rating: 5,
-    avatar: avatarSarah,
+    emoji: "👩‍💻",
   },
   {
     name: "Alex K.",
     location: "Austin, TX",
     review: "Simple, clean, and actually useful. Wish I had this during my freshman year.",
     rating: 5,
-    avatar: avatarAlex,
+    emoji: "🧑‍🎓",
   },
   {
     name: "Emily R.",
     location: "Seattle, WA",
     review: "Tracking 50+ companies manually was exhausting. Now I just check my dashboard each morning.",
     rating: 5,
-    avatar: avatarEmily,
+    emoji: "👩‍🦱",
   },
   {
     name: "Raj S.",
     location: "Toronto, ON",
     review: "Best tool for Canadian students targeting US internships. The timezone-aware alerts are clutch.",
     rating: 5,
-    avatar: avatarRaj,
+    emoji: "👨‍🔬",
+  },
+  {
+    name: "Michelle L.",
+    location: "Boston, MA",
+    review: "Landed my dream internship at a FAANG company. This app made sure I applied on day one.",
+    rating: 5,
+    emoji: "👩‍🎤",
   },
 ];
 
@@ -75,11 +77,9 @@ function ReviewCard({
           "{review.review}"
         </p>
         <div className="flex items-center gap-3">
-          <img
-            src={review.avatar}
-            alt={review.name}
-            className="w-12 h-12 rounded-full object-cover"
-          />
+          <div className="w-12 h-12 rounded-full bg-surface-soft flex items-center justify-center text-2xl">
+            {review.emoji}
+          </div>
           <div className="flex flex-col">
             <span className="font-medium text-foreground">{review.name}</span>
             <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -114,7 +114,7 @@ export function ReviewsSection() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 max-w-7xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {reviews.map((review, index) => (
             <ReviewCard key={review.name} review={review} index={index} />
           ))}
