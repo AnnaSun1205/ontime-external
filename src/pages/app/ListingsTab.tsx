@@ -615,13 +615,22 @@ export default function ListingsTab() {
   }, [filteredListings, activeTab, lastSeenListingsAt, seenListingIds]);
 
   const handleMarkAllAsSeen = async () => {
-    if (!userId) {
-      console.error('[Mark as Seen] No user ID');
+    // Get current user to ensure we have valid auth
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('[Mark as Seen] Auth error:', authError);
+      console.error('[Mark as Seen] User:', user);
+      toast.error('Please sign in to mark listings as seen');
       return;
     }
 
+    const currentUserId = user.id;
+    const userEmail = user.email;
+
     // Guard: only proceed if there are listings to mark as seen
     if (!hasListingsToMarkSeen) {
+      console.log('[Mark as Seen] No listings to mark as seen');
       return;
     }
 
@@ -639,11 +648,16 @@ export default function ListingsTab() {
       .map(listing => listing.id);
     
     if (idsToMarkSeen.length === 0) {
-      // This should not happen if hasListingsToMarkSeen is working correctly
+      console.log('[Mark as Seen] No IDs to mark after filtering');
       return;
     }
 
     console.log(`[Mark as Seen] Marking ${idsToMarkSeen.length} listings as seen for ${activeTab} tab, ${countryFilter} country`);
+    console.log('[Mark as Seen] User info:', { 
+      userId: currentUserId, 
+      email: userEmail,
+      listingIds: idsToMarkSeen 
+    });
 
     const now = new Date().toISOString();
     
@@ -651,22 +665,110 @@ export default function ListingsTab() {
     // NOTE: We do NOT update last_seen_listings_at_* here - that's only for global "last visit" tracking
     // opening_seen is for per-listing "dismissed" tracking
     const rowsToInsert = idsToMarkSeen.map(openingId => ({
-      user_id: userId,
+      user_id: currentUserId,
       opening_id: openingId,
       seen_at: now
     }));
 
-    const { error } = await supabase
+    console.log('[Mark as Seen] Payload:', { 
+      rowsToInsert,
+      rowCount: rowsToInsert.length,
+      sampleRow: rowsToInsert[0]
+    });
+
+    // Try upsert with composite unique constraint
+    // Supabase requires the constraint columns to be specified correctly
+    let { data, error } = await supabase
       .from('opening_seen')
-      .upsert(rowsToInsert, { onConflict: 'user_id,opening_id' });
+      .upsert(rowsToInsert, { 
+        onConflict: 'user_id,opening_id',
+        ignoreDuplicates: false
+      });
+
+    console.log('[Mark as Seen] Supabase response (first attempt):', { data, error });
+
+    // If upsert fails, try individual inserts with error handling
+    if (error) {
+      console.error('[Mark as Seen] Upsert failed, trying individual inserts:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+
+      // Fallback: try inserting one by one (will skip duplicates)
+      const results = await Promise.allSettled(
+        rowsToInsert.map(row => 
+          supabase
+            .from('opening_seen')
+            .upsert(row, { onConflict: 'user_id,opening_id' })
+        )
+      );
+
+      const failed: Array<{ index: number; row: typeof rowsToInsert[0]; error: any }> = [];
+      const successfulIds: string[] = [];
+
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          failed.push({ index, row: rowsToInsert[index], error: result.reason });
+        } else if (result.value.error) {
+          failed.push({ index, row: rowsToInsert[index], error: result.value.error });
+        } else {
+          successfulIds.push(rowsToInsert[index].opening_id);
+        }
+      });
+
+      console.log('[Mark as Seen] Individual insert results:', {
+        succeeded: successfulIds.length,
+        failed: failed.length,
+        failures: failed
+      });
+
+      if (failed.length > 0) {
+        const firstError = failed[0].error;
+        const errorMsg = firstError?.message || 'Unknown error';
+        
+        console.error('[Mark as Seen] Some inserts failed:', errorMsg);
+        
+        // Still update local state for successful ones
+        if (successfulIds.length > 0) {
+          setSeenListingIds(prev => {
+            const updated = new Set(prev);
+            successfulIds.forEach(id => updated.add(id));
+            return updated;
+          });
+          toast.success(`Marked ${successfulIds.length} listing${successfulIds.length === 1 ? '' : 's'} as seen (${failed.length} failed)`);
+        } else {
+          toast.error(`Failed to mark as seen: ${errorMsg}`);
+        }
+        return;
+      }
+
+      // All individual inserts succeeded - update state
+      setSeenListingIds(prev => {
+        const updated = new Set(prev);
+        idsToMarkSeen.forEach(id => updated.add(id));
+        return updated;
+      });
+
+      console.log(`[Mark as Seen] Successfully marked ${idsToMarkSeen.length} listings as seen (via fallback)`);
+      const listingType = activeTab === "new" ? "new" : "unread";
+      toast.success(`Marked ${idsToMarkSeen.length} ${listingType} listing${idsToMarkSeen.length === 1 ? '' : 's'} as seen`);
+      return; // Exit early since we handled it in fallback
+    }
 
     if (error) {
-      console.error('[Mark as Seen] Error:', error);
-      toast.error('Failed to mark as seen');
+      console.error('[Mark as Seen] Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      toast.error(`Failed to mark as seen: ${error.message || 'Unknown error'}`);
       return;
     }
 
-    // Update local state immediately so UI reflects changes
+    // Update local state immediately so UI reflects changes (successful upsert)
     setSeenListingIds(prev => {
       const updated = new Set(prev);
       idsToMarkSeen.forEach(id => updated.add(id));
