@@ -1,12 +1,10 @@
 import { Star, MapPin } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
-
-const avatarColors = [
-  "bg-gradient-to-br from-rose-400 to-pink-500",
-  "bg-gradient-to-br from-violet-400 to-purple-500",
-  "bg-gradient-to-br from-cyan-400 to-blue-500",
-  "bg-gradient-to-br from-emerald-400 to-green-500",
-];
+import avatarJohn from "@/assets/avatars/avatar-john.png";
+import avatarSarah from "@/assets/avatars/avatar-sarah.png";
+import avatarAlex from "@/assets/avatars/avatar-alex.png";
+import avatarEmily from "@/assets/avatars/avatar-emily.png";
+import avatarRaj from "@/assets/avatars/avatar-raj.png";
 
 const reviews = [
   {
@@ -14,24 +12,35 @@ const reviews = [
     location: "San Francisco, CA",
     review: "Finally stopped missing application deadlines. This tool is a game-changer for internship hunting.",
     rating: 5,
+    avatar: avatarJohn,
   },
   {
     name: "Sarah M.",
     location: "New York, NY",
     review: "The 7-day early alerts gave me time to prep my resume before roles opened. Got 3 interviews!",
     rating: 5,
+    avatar: avatarSarah,
   },
   {
     name: "Alex K.",
     location: "Austin, TX",
     review: "Simple, clean, and actually useful. Wish I had this during my freshman year.",
     rating: 5,
+    avatar: avatarAlex,
   },
   {
     name: "Emily R.",
     location: "Seattle, WA",
     review: "Tracking 50+ companies manually was exhausting. Now I just check my dashboard each morning.",
     rating: 5,
+    avatar: avatarEmily,
+  },
+  {
+    name: "Raj S.",
+    location: "Toronto, ON",
+    review: "Best tool for Canadian students targeting US internships. The timezone-aware alerts are clutch.",
+    rating: 5,
+    avatar: avatarRaj,
   },
 ];
 
@@ -66,13 +75,11 @@ function ReviewCard({
           "{review.review}"
         </p>
         <div className="flex items-center gap-3">
-          <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center ${avatarColors[index % avatarColors.length]}`}
-          >
-            <span className="text-sm font-semibold text-white">
-              {review.name.charAt(0)}
-            </span>
-          </div>
+          <img
+            src={review.avatar}
+            alt={review.name}
+            className="w-12 h-12 rounded-full object-cover"
+          />
           <div className="flex flex-col">
             <span className="font-medium text-foreground">{review.name}</span>
             <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -107,7 +114,7 @@ export function ReviewsSection() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 max-w-7xl mx-auto">
           {reviews.map((review, index) => (
             <ReviewCard key={review.name} review={review} index={index} />
           ))}
