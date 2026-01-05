@@ -76,12 +76,14 @@ export function PricingSection() {
     ref,
     isVisible
   } = useScrollAnimation(0.1);
-  return <section id="pricing" className="py-24 bg-white relative">
-      {/* Top gradient fade from white */}
-      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white to-transparent pointer-events-none" />
-      {/* Bottom gradient fade to white */}
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-white pointer-events-none" />
-      
+  return (
+    <section id="pricing" className="py-24 bg-card relative overflow-hidden">
+      {/* Smooth transition from the previous (blue/background) section */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-background to-card pointer-events-none"
+      />
+
       <div className="container relative z-10">
         <div ref={ref} className={`
             text-center mb-16 transition-all duration-1000 ease-out
@@ -94,10 +96,9 @@ export function PricingSection() {
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {plans.map((plan, index) => <PricingCard key={plan.name} plan={plan} index={index} />)}
         </div>
-
-        
       </div>
-    </section>;
+    </section>
+  );
 }
 function PricingCard({
   plan,
