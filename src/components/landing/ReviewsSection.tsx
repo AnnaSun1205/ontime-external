@@ -95,10 +95,15 @@ function ReviewCard({
 
 export function ReviewsSection() {
   const { ref: headerRef, isVisible: headerVisible } = useScrollAnimation(0.2);
-
   return (
-    <section className="py-24 bg-background relative">
-      <div className="container">
+    <section className="py-24 bg-background relative overflow-hidden">
+      {/* Smooth background transition from the previous (white/card) section */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-card to-background"
+      />
+
+      <div className="container relative z-10">
         <div
           ref={headerRef}
           className={`
