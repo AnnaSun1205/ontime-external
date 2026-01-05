@@ -102,14 +102,26 @@ export function ReviewsSection() {
         <div
           ref={headerRef}
           className={`
-            text-center mb-16 transition-all duration-1000 ease-out
-            ${headerVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
+            text-center mb-16 transition-all duration-700 ease-out
+            ${headerVisible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-12 scale-95"}
           `}
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          <h2 
+            className={`
+              text-3xl md:text-4xl font-bold mb-4 transition-all duration-700 ease-out
+              ${headerVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}
+            `}
+            style={{ transitionDelay: "100ms" }}
+          >
             What students are saying
           </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <p 
+            className={`
+              text-muted-foreground text-lg max-w-2xl mx-auto transition-all duration-700 ease-out
+              ${headerVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}
+            `}
+            style={{ transitionDelay: "250ms" }}
+          >
             Join thousands of students who never miss an internship deadline.
           </p>
         </div>
