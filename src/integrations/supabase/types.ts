@@ -733,6 +733,10 @@ export type Database = {
         }
         Returns: string
       }
+      delete_user_by_email: {
+        Args: { target_email: string }
+        Returns: undefined
+      }
       mark_openings_seen: {
         Args: { p_country: string; p_end: string; p_start: string }
         Returns: undefined
