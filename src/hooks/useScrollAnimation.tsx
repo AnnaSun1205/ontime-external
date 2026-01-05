@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
-export function useScrollAnimation(threshold = 0.1) {
+export function useScrollAnimation(threshold = 0.1, delay = 0) {
   const ref = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [hasAnimated, setHasAnimated] = useState(false);
+
+  useEffect(() => {
+    // Small delay to ensure CSS transition is ready
+    const timer = setTimeout(() => setHasAnimated(true), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -27,5 +34,6 @@ export function useScrollAnimation(threshold = 0.1) {
     };
   }, [threshold]);
 
-  return { ref, isVisible };
+  // Only return true when both conditions are met
+  return { ref, isVisible: hasAnimated && isVisible };
 }
