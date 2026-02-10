@@ -54,9 +54,10 @@ export function SellingPointsSection() {
     ref: headerRef,
     isVisible: headerVisible
   } = useScrollAnimation(0.2);
-  return <section className="py-24 bg-white relative">
+  return <section className="py-24 bg-card relative">
+      {/* Top gradient fade from hero (background blue) to this section (card white) */}
+      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-background to-card pointer-events-none" />
       {/* Bottom gradient fade from white to muted (How it works section) */}
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-muted pointer-events-none" />
       <div className="container">
         <div ref={headerRef} className={`
             text-center mb-16 transition-all duration-1000 ease-out
