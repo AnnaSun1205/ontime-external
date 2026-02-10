@@ -14,6 +14,7 @@ import CalendarTab from "./pages/app/CalendarTab";
 import InboxTab from "./pages/app/InboxTab";
 import ListingsTab from "./pages/app/ListingsTab";
 import SettingsTab from "./pages/app/SettingsTab";
+import NetworkingRoadmap from "./pages/app/NetworkingRoadmap";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="listings" element={<ListingsTab />} />
             <Route path="inbox" element={<InboxTab />} />
             <Route path="settings" element={<SettingsTab />} />
+            <Route path="roadmap" element={<NetworkingRoadmap />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

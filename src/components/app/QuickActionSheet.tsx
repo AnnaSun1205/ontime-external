@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Upload, User, FileText, FileCheck, X, ChevronLeft } from "lucide-react";
+import { Plus, Upload, User, FileText, FileCheck, X, ChevronLeft, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
@@ -154,24 +154,33 @@ export function QuickActionSheet() {
             )}
           >
             <h3 className="text-lg font-semibold mb-5 text-center">What would you like to do?</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => setStep("doc-type")}
-                className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-border bg-background hover:border-primary/20 hover:bg-secondary/50 transition-all duration-200 group"
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl border border-border bg-background hover:border-primary/20 hover:bg-secondary/50 transition-all duration-200 group"
               >
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
                   <Upload className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-sm font-medium">Upload Document</span>
+                <span className="text-xs font-medium text-center leading-tight">Upload<br/>Document</span>
+              </button>
+              <button
+                onClick={() => { handleClose(); navigate("/app/roadmap"); }}
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl border border-border bg-background hover:border-primary/20 hover:bg-secondary/50 transition-all duration-200 group"
+              >
+                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                  <Map className="w-5 h-5 text-primary" />
+                </div>
+                <span className="text-xs font-medium text-center leading-tight">Networking<br/>Roadmap</span>
               </button>
               <button
                 onClick={() => { handleClose(); navigate("/app/settings"); }}
-                className="flex flex-col items-center gap-3 p-5 rounded-2xl border border-border bg-background hover:border-primary/20 hover:bg-secondary/50 transition-all duration-200 group"
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl border border-border bg-background hover:border-primary/20 hover:bg-secondary/50 transition-all duration-200 group"
               >
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
+                <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors">
                   <User className="w-5 h-5 text-primary" />
                 </div>
-                <span className="text-sm font-medium">View My Profile</span>
+                <span className="text-xs font-medium text-center leading-tight">View My<br/>Profile</span>
               </button>
             </div>
           </div>
