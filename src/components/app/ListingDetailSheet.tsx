@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, MapPin, Loader2, Sparkles, Plus, Check, FileText, ArrowRight, Download, ChevronLeft, X, Copy, CheckCircle2, Pencil } from "lucide-react";
@@ -211,7 +212,11 @@ function ResultsView({
                         className="text-[11px] h-7 flex-1"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigator.clipboard.writeText(s.suggested);
+                          navigator.clipboard.writeText(s.suggested).then(() => {
+                            toast.success("Copied to clipboard — paste it into your resume!");
+                          }).catch(() => {
+                            toast.error("Couldn't copy — try selecting the text manually");
+                          });
                         }}
                       >
                         <Pencil className="w-3 h-3 mr-1" /> Edit myself
