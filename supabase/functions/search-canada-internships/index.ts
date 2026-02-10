@@ -7,10 +7,24 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Search queries to cast a wide net for Canadian internships
+// Search queries — diverse industries and regions
 const SEARCH_QUERIES = [
-  "Canada internship 2025 2026 software engineering apply now site:linkedin.com OR site:indeed.ca OR site:glassdoor.ca",
-  "Canadian summer internship co-op 2025 2026 Toronto Vancouver Montreal hiring",
+  "Canada internship co-op 2025 2026 software engineering apply careers",
+  "Canadian internship 2025 2026 finance banking consulting apply",
+  "Toronto Vancouver Montreal internship co-op 2025 2026 hiring careers",
+  "Canada summer internship 2025 2026 Shopify RBC BMO Deloitte apply",
+  "Canadian government internship co-op 2025 2026 data science engineering",
+];
+
+// Aggregator/job board domains to skip — we want direct company pages
+const AGGREGATOR_DOMAINS = [
+  "indeed.com", "indeed.ca", "glassdoor.com", "glassdoor.ca", "glassdoor.ie",
+  "linkedin.com", "ziprecruiter.com", "monster.ca", "monster.com",
+  "workopolis.com", "eluta.ca", "talent.com", "jooble.org",
+  "simplyhired.com", "careerbuilder.com", "prosple.com",
+  "levels.fyi", "preplounge.com", "businessbecause.com", "managementconsulted.com",
+  "weekday.works", "theinternship.online", "newsletter.interninsider.me",
+  "albertajobcentre.com",
 ];
 
 const FIRECRAWL_API_URL = "https://api.firecrawl.dev/v1";
@@ -132,6 +146,9 @@ function extractJobsFromResult(result: any): ExtractedJob[] {
   const title: string = result.title || "";
 
   if (!markdown && !title) return jobs;
+
+  // Skip aggregator/job board sites
+  if (isAggregatorSite(sourceUrl)) return jobs;
 
   // Strategy 1: If the page looks like a single job posting, extract it directly
   if (isSingleJobPage(sourceUrl, title, markdown)) {
@@ -344,6 +361,32 @@ function extractCanadianLocation(text: string): string | null {
   return null;
 }
 
+function isAggregatorSite(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return AGGREGATOR_DOMAINS.some((d) => hostname.includes(d));
+  } catch {
+    return false;
+  }
+}
+
+// Known company name mappings for better display names
+const COMPANY_NAME_MAP: Record<string, string> = {
+  "rbc": "RBC", "bmo": "BMO", "td": "TD Bank", "cibc": "CIBC",
+  "scotiabank": "Scotiabank", "sunlife": "Sun Life", "manulife": "Manulife",
+  "shopify": "Shopify", "amazon": "Amazon", "google": "Google",
+  "microsoft": "Microsoft", "meta": "Meta", "apple": "Apple",
+  "deloitte": "Deloitte", "pwc": "PwC", "ey": "EY", "kpmg": "KPMG",
+  "mckinsey": "McKinsey", "bcg": "BCG", "bain": "Bain",
+  "telus": "TELUS", "rogers": "Rogers", "bell": "Bell Canada",
+  "cgi": "CGI", "sap": "SAP", "ibm": "IBM", "intel": "Intel",
+  "nvidia": "NVIDIA", "amd": "AMD", "qualcomm": "Qualcomm",
+  "boeing": "Boeing", "bombardier": "Bombardier", "cae": "CAE",
+  "cn": "CN Rail", "cp": "CP Rail", "hydro-quebec": "Hydro-Québec",
+  "blackberry": "BlackBerry", "opentext": "OpenText", "kinaxis": "Kinaxis",
+  "canada": "Government of Canada",
+};
+
 function extractCompanyFromUrl(url: string): string | null {
   try {
     const hostname = new URL(url).hostname;
@@ -351,11 +394,14 @@ function extractCompanyFromUrl(url: string): string | null {
     const cleaned = hostname
       .replace(/^(www|careers|jobs|apply)\./i, "")
       .replace(
-        /\.(com|ca|io|co|org|net|jobs|careers|lever|greenhouse|workday|smartrecruiters).*$/i,
+        /\.(com|ca|io|co|org|net|jobs|careers|lever|greenhouse|workday|smartrecruiters|myworkdayjobs|icims).*$/i,
         ""
       );
     if (cleaned && cleaned.length > 1 && cleaned.length < 40) {
-      // Capitalize
+      // Check known mapping first
+      const mapped = COMPANY_NAME_MAP[cleaned.toLowerCase()];
+      if (mapped) return mapped;
+      // Capitalize first letter
       return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
     }
   } catch {
@@ -413,46 +459,46 @@ serve(async (req) => {
   };
 
   try {
-    // Step 1: Run all search queries
+    // Step 1: Run search queries in parallel batches of 3
     const allJobs: ExtractedJob[] = [];
     const seenHashes = new Set<string>();
 
-    for (const query of SEARCH_QUERIES) {
-      console.log(`Searching: "${query}"`);
-      const { results, error } = await searchInternships(firecrawlApiKey, query);
+    const batchSize = 3;
+    for (let i = 0; i < SEARCH_QUERIES.length; i += batchSize) {
+      const batch = SEARCH_QUERIES.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map((query) => searchInternships(firecrawlApiKey, query).then((r) => ({ query, ...r })))
+      );
 
-      const searchDebug: any = {
-        query,
-        results_count: results.length,
-        error: error || null,
-      };
+      for (const { query, results, error } of batchResults) {
+        const searchDebug: any = { query, results_count: results.length, error: error || null };
+        debug.extraction.total_results += results.length;
 
-      debug.extraction.total_results += results.length;
-
-      // Extract jobs from each search result
-      let queryJobCount = 0;
-      for (const result of results) {
-        const extracted = extractJobsFromResult(result);
-        for (const job of extracted) {
-          // Deduplicate by hash
-          const hash = await sha256(
-            `${job.company_name}|${job.role_title}|${job.location || ""}|${job.apply_url}`
-          );
-          if (!seenHashes.has(hash)) {
-            seenHashes.add(hash);
-            allJobs.push(job);
-            queryJobCount++;
-          } else {
-            debug.extraction.duplicates_skipped++;
+        let queryJobCount = 0;
+        for (const result of results) {
+          const extracted = extractJobsFromResult(result);
+          for (const job of extracted) {
+            const hash = await sha256(
+              `${job.company_name}|${job.role_title}|${job.location || ""}|${job.apply_url}`
+            );
+            if (!seenHashes.has(hash)) {
+              seenHashes.add(hash);
+              allJobs.push(job);
+              queryJobCount++;
+            } else {
+              debug.extraction.duplicates_skipped++;
+            }
           }
         }
+
+        searchDebug.jobs_extracted = queryJobCount;
+        debug.searches.push(searchDebug);
       }
 
-      searchDebug.jobs_extracted = queryJobCount;
-      debug.searches.push(searchDebug);
-
-      // Small delay between searches to avoid rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Brief pause between batches
+      if (i + batchSize < SEARCH_QUERIES.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
 
     debug.extraction.jobs_extracted = allJobs.length;
@@ -463,16 +509,14 @@ serve(async (req) => {
     let inserted = 0;
     let updated = 0;
 
+    // Prepare all records with hashes
+    const records: any[] = [];
     for (const job of allJobs) {
       try {
         const listingHash = await sha256(
           `${job.company_name}${job.role_title}${job.location || ""}Summer 2025${job.apply_url}`
         );
-
-        const roleCategory = classifyRoleCategory(job.role_title);
-        const jobType = classifyJobType(job.role_title);
-
-        const record = {
+        records.push({
           company_name: job.company_name,
           role_title: job.role_title,
           location: job.location,
@@ -486,53 +530,27 @@ serve(async (req) => {
           last_seen_at: now,
           first_seen_at: now,
           updated_at: now,
-          role_category: roleCategory,
-          job_type: jobType,
-        };
-
-        // Check if exists
-        const { data: existing } = await supabase
-          .from("opening_signals")
-          .select("id, first_seen_at")
-          .eq("listing_hash", listingHash)
-          .maybeSingle();
-
-        if (existing) {
-          // Update — preserve first_seen_at
-          const { error: updateError } = await supabase
-            .from("opening_signals")
-            .update({
-              last_seen_at: now,
-              updated_at: now,
-              is_active: true,
-            })
-            .eq("id", existing.id);
-
-          if (updateError) {
-            debug.upsert.errors.push(
-              `Update ${job.company_name}: ${updateError.message}`
-            );
-          } else {
-            updated++;
-          }
-        } else {
-          // Insert
-          const { error: insertError } = await supabase
-            .from("opening_signals")
-            .insert(record);
-
-          if (insertError) {
-            debug.upsert.errors.push(
-              `Insert ${job.company_name}: ${insertError.message}`
-            );
-          } else {
-            inserted++;
-          }
-        }
+          role_category: classifyRoleCategory(job.role_title),
+          job_type: classifyJobType(job.role_title),
+        });
       } catch (err) {
-        debug.upsert.errors.push(
-          `${job.company_name}: ${err instanceof Error ? err.message : "Unknown"}`
-        );
+        debug.upsert.errors.push(`Hash ${job.company_name}: ${err instanceof Error ? err.message : "Unknown"}`);
+      }
+    }
+
+    // Batch upsert using onConflict
+    const upsertBatchSize = 20;
+    for (let i = 0; i < records.length; i += upsertBatchSize) {
+      const upsertBatch = records.slice(i, i + upsertBatchSize);
+      const { data, error: upsertError } = await supabase
+        .from("opening_signals")
+        .upsert(upsertBatch, { onConflict: "listing_hash", ignoreDuplicates: false })
+        .select("id");
+
+      if (upsertError) {
+        debug.upsert.errors.push(`Batch ${i}: ${upsertError.message}`);
+      } else {
+        inserted += (data || []).length;
       }
     }
 
