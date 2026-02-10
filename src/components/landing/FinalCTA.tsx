@@ -65,9 +65,7 @@ export function FinalCTA() {
               asChild 
               className="text-base px-8"
             >
-              <Link to={isLoggedIn ? "/app" : "/login"}>
-                View dashboard
-              </Link>
+              <Link to="/waitlist">Join Waitlist</Link>
             </Button>
           </div>
         </div>
