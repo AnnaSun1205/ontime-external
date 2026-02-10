@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
-import { Calendar, Bell, Briefcase, Settings, LogOut, Loader2 } from "lucide-react";
+import { Calendar, Bell, Briefcase, User, LogOut, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ const navItems = [
   { href: "/app", icon: Calendar, label: "Calendar" },
   { href: "/app/listings", icon: Briefcase, label: "Listings" },
   { href: "/app/inbox", icon: Bell, label: "Inbox" },
-  { href: "/app/settings", icon: Settings, label: "Settings" },
+  { href: "/app/settings", icon: User, label: "Profile" },
 ];
 
 export default function AppLayout() {
