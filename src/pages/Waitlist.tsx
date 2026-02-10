@@ -10,6 +10,40 @@ import { z } from "zod";
 
 const emailSchema = z.string().trim().email("Please enter a valid email").max(255, "Email is too long");
 
+const COMPANIES = [
+  "Google", "Meta", "Amazon", "Apple", "Microsoft", "Tesla", "Netflix",
+  "Shopify", "Stripe", "Airbnb", "Uber", "Spotify", "Adobe", "Salesforce",
+  "Goldman Sachs", "JPMorgan", "Morgan Stanley", "Citadel", "Jane Street",
+  "Databricks", "Snowflake", "Palantir", "Coinbase", "Figma", "Notion",
+  "Slack", "Dropbox", "Pinterest", "Snap", "Twitter", "LinkedIn",
+  "Intel", "AMD", "NVIDIA", "Oracle", "IBM", "SAP", "Cisco",
+];
+
+const ROW1 = COMPANIES.slice(0, 13);
+const ROW2 = COMPANIES.slice(13, 26);
+const ROW3 = COMPANIES.slice(26);
+
+function MarqueeRow({ items, duration, reverse = false }: { items: string[]; duration: number; reverse?: boolean }) {
+  const doubled = [...items, ...items];
+  return (
+    <div className="flex overflow-hidden select-none pointer-events-none">
+      <div
+        className={`flex shrink-0 gap-4 ${reverse ? "animate-[marquee-reverse_var(--duration)_linear_infinite]" : "animate-[marquee_var(--duration)_linear_infinite]"}`}
+        style={{ "--duration": `${duration}s` } as React.CSSProperties}
+      >
+        {doubled.map((name, i) => (
+          <span
+            key={`${name}-${i}`}
+            className="inline-flex items-center px-5 py-2 rounded-full border border-border/60 bg-background/80 text-sm font-medium text-muted-foreground whitespace-nowrap backdrop-blur-sm"
+          >
+            {name}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Waitlist() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -47,15 +81,31 @@ export default function Waitlist() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="container py-6">
+    <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
+      {/* Scrolling company marquee background */}
+      <div className="absolute inset-0 flex flex-col justify-center gap-4 opacity-[0.35]" aria-hidden="true">
+        <MarqueeRow items={ROW1} duration={35} />
+        <MarqueeRow items={ROW2} duration={40} reverse />
+        <MarqueeRow items={ROW3} duration={30} />
+      </div>
+
+      {/* Radial fade so center content pops */}
+      <div
+        className="absolute inset-0 z-[1]"
+        style={{
+          background: "radial-gradient(ellipse 60% 50% at 50% 50%, hsl(var(--background)) 30%, transparent 80%)",
+        }}
+        aria-hidden="true"
+      />
+
+      <header className="container py-6 relative z-10">
         <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="w-4 h-4" />
           Back to home
         </Link>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4">
+      <main className="flex-1 flex items-center justify-center px-4 relative z-10">
         <div className="w-full max-w-md text-center space-y-8">
           <Logo size="md" />
 
@@ -69,7 +119,7 @@ export default function Waitlist() {
           </div>
 
           {joined ? (
-            <div className="flex flex-col items-center gap-3 py-6">
+            <div className="flex flex-col items-center gap-3 py-6 animate-fade-in">
               <div className="w-12 h-12 rounded-full bg-[hsl(142,60%,95%)] flex items-center justify-center">
                 <CheckCircle2 className="w-6 h-6 text-[hsl(142,71%,35%)]" />
               </div>
