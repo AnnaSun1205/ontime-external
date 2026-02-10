@@ -385,6 +385,10 @@ const COMPANY_NAME_MAP: Record<string, string> = {
   "cn": "CN Rail", "cp": "CP Rail", "hydro-quebec": "Hydro-Québec",
   "blackberry": "BlackBerry", "opentext": "OpenText", "kinaxis": "Kinaxis",
   "canada": "Government of Canada",
+  "intactfc": "Intact Financial", "cnrl": "Canadian Natural Resources",
+  "gdmissionsystems": "General Dynamics", "asc-csa.gc": "Canadian Space Agency",
+  "pepsicojobs": "PepsiCo", "worley": "Worley",
+  "internships.shopify": "Shopify", "jobs.rbc": "RBC", "jobs.bmo": "BMO",
 };
 
 function extractCompanyFromUrl(url: string): string | null {
@@ -551,6 +555,17 @@ serve(async (req) => {
         debug.upsert.errors.push(`Batch ${i}: ${upsertError.message}`);
       } else {
         inserted += (data || []).length;
+
+        // Also insert into opening_signal_countries for country filtering
+        if (data && data.length > 0) {
+          const countryRecords = data.map((d: any) => ({
+            opening_id: d.id,
+            country: "CA",
+          }));
+          await supabase
+            .from("opening_signal_countries")
+            .upsert(countryRecords, { onConflict: "opening_id,country", ignoreDuplicates: true });
+        }
       }
     }
 
