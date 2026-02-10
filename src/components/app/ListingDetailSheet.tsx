@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, MapPin, Loader2, Sparkles, Plus, Check, FileText, ArrowRight, Download, ChevronLeft, ArrowDown } from "lucide-react";
+import { ExternalLink, MapPin, Loader2, Sparkles, Plus, Check, FileText, ArrowRight, Download, ChevronLeft, X, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -51,6 +51,161 @@ interface ListingDetailSheetProps {
 }
 
 type View = "details" | "select-resume" | "tailoring" | "results";
+
+/* ── Highlighted Resume Results View ── */
+function ResultsView({
+  tailorResult,
+  listing,
+  selectedResumeName,
+  onBack,
+}: {
+  tailorResult: TailorResult;
+  listing: Listing;
+  selectedResumeName: string;
+  onBack: () => void;
+}) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  const matchColor =
+    tailorResult.overall_match >= 70
+      ? "text-status-opens-soon"
+      : tailorResult.overall_match >= 40
+      ? "text-status-prepare"
+      : "text-status-live";
+
+  const matchBg =
+    tailorResult.overall_match >= 70
+      ? "bg-status-opens-soon"
+      : tailorResult.overall_match >= 40
+      ? "bg-status-prepare"
+      : "bg-status-live";
+
+  const copyAll = () => {
+    const text = tailorResult.suggestions
+      .map((s) => `[${s.section}]\nBefore: ${s.current}\nAfter: ${s.suggested}\nWhy: ${s.reason}`)
+      .join("\n\n");
+    navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="flex flex-col max-h-[80vh]">
+      {/* Header with match score */}
+      <div className="p-5 pb-3 border-b border-border flex-shrink-0">
+        <div className="flex items-center gap-2 mb-3">
+          <button onClick={onBack} className="p-1 rounded-md hover:bg-muted transition-colors">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <DialogTitle className="text-sm font-semibold flex-1">Resume Analysis</DialogTitle>
+          <button onClick={copyAll} className="p-1.5 rounded-md hover:bg-muted transition-colors" title="Copy all suggestions">
+            <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        </div>
+
+        {/* Match score bar */}
+        <div className="flex items-center gap-3 mb-2">
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-muted-foreground">Match Score</span>
+              <span className={cn("text-sm font-bold", matchColor)}>
+                {tailorResult.overall_match}%
+              </span>
+            </div>
+            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className={cn("h-full rounded-full transition-all duration-1000", matchBg)}
+                style={{ width: `${tailorResult.overall_match}%` }}
+              />
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{tailorResult.summary}</p>
+      </div>
+
+      {/* Resume content with highlighted sections */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-1">
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium mb-3">
+          {tailorResult.suggestions.length} sections to improve · tap highlighted areas
+        </p>
+
+        {tailorResult.suggestions.map((s, i) => (
+          <div key={i} className="relative">
+            {/* The highlighted resume section */}
+            <button
+              onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
+              className={cn(
+                "w-full text-left rounded-lg p-3 transition-all border",
+                expandedIdx === i
+                  ? "bg-[hsl(48,100%,92%)] border-[hsl(48,80%,65%)] shadow-sm"
+                  : "bg-[hsl(48,100%,95%)] border-[hsl(48,80%,80%)] hover:bg-[hsl(48,100%,90%)] hover:border-[hsl(48,80%,70%)]"
+              )}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-foreground">{s.section}</span>
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                  expandedIdx === i ? "bg-[hsl(48,80%,65%)]/30 text-[hsl(30,60%,30%)]" : "bg-[hsl(48,80%,75%)]/30 text-[hsl(30,50%,40%)]"
+                )}>
+                  {expandedIdx === i ? "viewing" : "click to edit"}
+                </span>
+              </div>
+              <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2">
+                {s.current}
+              </p>
+            </button>
+
+            {/* Expanded suggestion popover */}
+            {expandedIdx === i && (
+              <div className="mt-2 mb-3 rounded-xl border border-primary/20 bg-card shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/10 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-primary">✨ Suggested Edit</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setExpandedIdx(null); }}
+                    className="p-0.5 rounded hover:bg-primary/10 transition-colors"
+                  >
+                    <X className="w-3 h-3 text-primary/60" />
+                  </button>
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="bg-primary/[0.04] rounded-lg p-3 border border-primary/10">
+                    <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{s.suggested}</p>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] font-medium text-muted-foreground mt-0.5 shrink-0">Why:</span>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{s.reason}</p>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-[11px] h-7 flex-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(s.suggested);
+                      }}
+                    >
+                      <Copy className="w-3 h-3 mr-1" /> Copy text
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Bottom actions */}
+      <div className="p-4 border-t border-border flex gap-2 flex-shrink-0">
+        <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={onBack}>
+          Back to details
+        </Button>
+        <Button size="sm" className="flex-1 text-xs" onClick={copyAll}>
+          <Download className="w-3 h-3 mr-1" />
+          Copy all suggestions
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export function ListingDetailSheet({
   listing,
@@ -362,88 +517,14 @@ export function ListingDetailSheet({
           </div>
         )}
 
-        {/* ── Results View (Side-by-side) ── */}
+        {/* ── Results View (Resume with highlights) ── */}
         {view === "results" && tailorResult && (
-          <div className="flex flex-col max-h-[80vh]">
-            <div className="p-5 pb-3 border-b border-border flex-shrink-0">
-              <div className="flex items-center gap-2 mb-3">
-                <button onClick={() => setView("details")} className="p-1 rounded-md hover:bg-muted transition-colors">
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <DialogTitle className="text-sm font-semibold">Resume Suggestions</DialogTitle>
-              </div>
-
-              {/* Match score */}
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-muted-foreground">Match Score</span>
-                    <span className={cn(
-                      "text-sm font-bold",
-                      tailorResult.overall_match >= 70 ? "text-status-opens-soon" :
-                      tailorResult.overall_match >= 40 ? "text-status-prepare" : "text-status-live"
-                    )}>
-                      {tailorResult.overall_match}%
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all duration-1000",
-                        tailorResult.overall_match >= 70 ? "bg-status-opens-soon" :
-                        tailorResult.overall_match >= 40 ? "bg-status-prepare" : "bg-status-live"
-                      )}
-                      style={{ width: `${tailorResult.overall_match}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">{tailorResult.summary}</p>
-            </div>
-
-            {/* Suggestions list */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {tailorResult.suggestions.map((s, i) => (
-                <div key={i} className="rounded-xl border border-border overflow-hidden">
-                  {/* Section header */}
-                  <div className="px-3.5 py-2 bg-muted/50 border-b border-border">
-                    <span className="text-xs font-semibold text-foreground">{s.section}</span>
-                    <span className="text-[10px] text-muted-foreground ml-2">— {s.reason}</span>
-                  </div>
-
-                  {/* Side by side */}
-                  <div className="grid grid-cols-2 divide-x divide-border">
-                    <div className="p-3">
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Current</p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">{s.current}</p>
-                    </div>
-                    <div className="p-3 bg-primary/[0.03]">
-                      <p className="text-[10px] font-medium text-primary uppercase tracking-wide mb-1.5">Suggested</p>
-                      <p className="text-xs text-foreground leading-relaxed">{s.suggested}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Bottom actions */}
-            <div className="p-4 border-t border-border flex gap-2 flex-shrink-0">
-              <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={() => setView("details")}>
-                Back to details
-              </Button>
-              <Button size="sm" className="flex-1 text-xs" onClick={() => {
-                // Copy all suggestions to clipboard
-                const text = tailorResult.suggestions
-                  .map((s) => `[${s.section}]\nBefore: ${s.current}\nAfter: ${s.suggested}\nWhy: ${s.reason}`)
-                  .join("\n\n");
-                navigator.clipboard.writeText(text);
-                // Could add a toast here
-              }}>
-                <Download className="w-3 h-3 mr-1" />
-                Copy all suggestions
-              </Button>
-            </div>
-          </div>
+          <ResultsView
+            tailorResult={tailorResult}
+            listing={listing}
+            selectedResumeName={selectedResumeName}
+            onBack={() => setView("details")}
+          />
         )}
       </DialogContent>
     </Dialog>
