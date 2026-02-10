@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Trash2, Globe, Search, Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Download, Trash2, Globe, Search, Lock, Upload, FileText, Plus, Sparkles, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +67,20 @@ const COMMON_TIMEZONES = [
   "Pacific/Honolulu",
 ];
 
+const RESUME_CATEGORIES = [
+  { value: "software_engineering", label: "Software Engineering" },
+  { value: "data_engineering", label: "Data Engineering" },
+  { value: "data_science", label: "Data Science / ML" },
+  { value: "product_management", label: "Product Management" },
+  { value: "investment_banking", label: "Investment Banking" },
+  { value: "consulting", label: "Consulting" },
+  { value: "quantitative_finance", label: "Quantitative Finance" },
+  { value: "hardware_engineering", label: "Hardware Engineering" },
+  { value: "general", label: "General" },
+];
+
+const MAX_RESUMES = 5;
+
 export default function SettingsTab() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -85,6 +100,86 @@ export default function SettingsTab() {
   const [timezone, setTimezone] = useState("");
   const [timezoneOpen, setTimezoneOpen] = useState(false);
   const [timezoneSearch, setTimezoneSearch] = useState("");
+  // Resume state
+  const [resumes, setResumes] = useState<Array<{ id: string; file_name: string; file_path: string; category: string; created_at: string }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState("software_engineering");
+
+  // Fetch resumes
+  const fetchResumes = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase
+      .from("resumes")
+      .select("id, file_name, file_path, category, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    if (!error && data) setResumes(data);
+  }, []);
+
+  useEffect(() => { fetchResumes(); }, [fetchResumes]);
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (resumes.length >= MAX_RESUMES) {
+      toast.error(`Maximum ${MAX_RESUMES} resumes allowed. Delete one first.`);
+      return;
+    }
+
+    const allowedTypes = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Please upload a PDF or Word document.");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File size must be under 10MB.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const filePath = `${user.id}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("resumes")
+        .upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase.from("resumes").insert({
+        user_id: user.id,
+        file_name: file.name,
+        file_path: filePath,
+        category: selectedCategory,
+        file_size: file.size,
+      });
+      if (dbError) throw dbError;
+
+      toast.success("Resume uploaded successfully!");
+      fetchResumes();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload resume");
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDeleteResume = async (resumeId: string, filePath: string) => {
+    try {
+      await supabase.storage.from("resumes").remove([filePath]);
+      await supabase.from("resumes").delete().eq("id", resumeId);
+      toast.success("Resume deleted");
+      fetchResumes();
+    } catch {
+      toast.error("Failed to delete resume");
+    }
+  };
+
 
   const filteredTimezones = useMemo(() => {
     if (!timezoneSearch) return COMMON_TIMEZONES;
@@ -212,7 +307,119 @@ export default function SettingsTab() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold">Settings</h1>
+      <h1 className="text-2xl font-bold">Profile</h1>
+
+      {/* My Resumes */}
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            <h2 className="font-semibold text-lg">My Resumes</h2>
+          </div>
+          <span className="text-sm text-muted-foreground">{resumes.length}/{MAX_RESUMES}</span>
+        </div>
+
+        {/* Uploaded resumes list */}
+        {resumes.length > 0 && (
+          <div className="space-y-3">
+            {resumes.map((resume) => {
+              const categoryLabel = RESUME_CATEGORIES.find(c => c.value === resume.category)?.label || resume.category;
+              return (
+                <div key={resume.id} className="flex items-center justify-between p-3 rounded-xl border border-border bg-background">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{resume.file_name}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-xs">{categoryLabel}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(resume.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive shrink-0">
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete resume?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete "{resume.file_name}".
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDeleteResume(resume.id, resume.file_path)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Upload section */}
+        {resumes.length < MAX_RESUMES && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="flex-1 !bg-white">
+                  <SelectValue placeholder="Resume type..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {RESUME_CATEGORIES.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center justify-center gap-2 py-4 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors">
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+                onChange={handleResumeUpload}
+                disabled={isUploading}
+              />
+              {isUploading ? (
+                <span className="text-sm text-muted-foreground">Uploading...</span>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Upload PDF or Word doc</span>
+                </>
+              )}
+            </label>
+          </div>
+        )}
+
+        {/* AI Resume Editor placeholder */}
+        <div className="relative overflow-hidden rounded-xl border border-dashed border-primary/30 bg-primary/5 p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-sm">AI Resume Editor</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Coming soon — our AI will help you tailor your resume for specific roles, 
+                optimize keywords, and improve your chances of landing interviews.
+              </p>
+              <Badge variant="outline" className="mt-2 text-xs border-primary/30 text-primary">Coming Soon</Badge>
+            </div>
+          </div>
+        </div>
+      </div>
       
       {/* Email Settings */}
       <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
