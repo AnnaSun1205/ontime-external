@@ -28,7 +28,7 @@ export function HowItWorksSection() {
             text-center mb-16 transition-all duration-1000 ease-out
             ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
           `}>
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">How it works</h2>
+          <h2 className="text-3xl md:text-4xl font-serif mb-4">How it works</h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
             Get set up in under 2 minutes. Then, we'll handle the timing.
           </p>

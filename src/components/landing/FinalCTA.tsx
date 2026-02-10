@@ -46,7 +46,7 @@ export function FinalCTA() {
       
       <div className="container relative z-10">
         <div className="max-w-2xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+          <h2 className="text-3xl md:text-4xl font-serif mb-4">
             Apply on time. Every time.
           </h2>
           

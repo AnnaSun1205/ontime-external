@@ -62,7 +62,7 @@ export function SellingPointsSection() {
             text-center mb-16 transition-all duration-1000 ease-out
             ${headerVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
           `}>
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Never miss an internship again!</h2>
+          <h2 className="text-3xl md:text-4xl font-serif mb-4">Never miss an internship again!</h2>
           
         </div>
 

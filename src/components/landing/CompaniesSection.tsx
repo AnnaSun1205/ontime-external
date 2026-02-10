@@ -64,7 +64,7 @@ export function CompaniesSection() {
             ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
           `}
         >
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Follow companies, not noise</h2>
+          <h2 className="text-3xl md:text-4xl font-serif mb-4">Follow companies, not noise</h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
             Track the companies that matter to you. Pause anytime. Resume when you're ready.
           </p>
