@@ -68,17 +68,21 @@ function ResultsView({
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
   const [acceptedIdxs, setAcceptedIdxs] = useState<Set<number>>(new Set());
 
+  const totalSuggestions = tailorResult.suggestions.length;
+  const boostPerSuggestion = totalSuggestions > 0 ? (100 - tailorResult.overall_match) / totalSuggestions : 0;
+  const adjustedScore = Math.min(100, Math.round(tailorResult.overall_match + acceptedIdxs.size * boostPerSuggestion));
+
   const matchColor =
-    tailorResult.overall_match >= 70
+    adjustedScore >= 70
       ? "text-status-opens-soon"
-      : tailorResult.overall_match >= 40
+      : adjustedScore >= 40
       ? "text-status-prepare"
       : "text-status-live";
 
   const matchBg =
-    tailorResult.overall_match >= 70
+    adjustedScore >= 70
       ? "bg-status-opens-soon"
-      : tailorResult.overall_match >= 40
+      : adjustedScore >= 40
       ? "bg-status-prepare"
       : "bg-status-live";
 
@@ -109,13 +113,13 @@ function ResultsView({
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs font-medium text-muted-foreground">Match Score</span>
               <span className={cn("text-sm font-bold", matchColor)}>
-                {tailorResult.overall_match}%
+                {adjustedScore}%
               </span>
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className={cn("h-full rounded-full transition-all duration-1000", matchBg)}
-                style={{ width: `${tailorResult.overall_match}%` }}
+                style={{ width: `${adjustedScore}%` }}
               />
             </div>
           </div>
