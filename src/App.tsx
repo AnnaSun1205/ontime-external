@@ -15,6 +15,7 @@ import InboxTab from "./pages/app/InboxTab";
 import ListingsTab from "./pages/app/ListingsTab";
 import SettingsTab from "./pages/app/SettingsTab";
 import NetworkingRoadmap from "./pages/app/NetworkingRoadmap";
+import Waitlist from "./pages/Waitlist";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
           <Route path="/signup" element={<Signup />} />
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/waitlist" element={<Waitlist />} />
           <Route path="/app" element={<AppLayout />}>
             <Route index element={<CalendarTab />} />
             <Route path="listings" element={<ListingsTab />} />
