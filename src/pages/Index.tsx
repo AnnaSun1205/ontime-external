@@ -8,6 +8,7 @@ import { HeroSection } from "@/components/landing/HeroSection";
 import { SellingPointsSection } from "@/components/landing/SellingPointsSection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
 import { ProductPreviewSection } from "@/components/landing/ProductPreviewSection";
+import { NetworkingSection } from "@/components/landing/NetworkingSection";
 import { CompaniesSection } from "@/components/landing/CompaniesSection";
 import { CompanyLogosSection } from "@/components/landing/CompanyLogosSection";
 import { PricingSection } from "@/components/landing/PricingSection";
@@ -98,6 +99,7 @@ const Index = () => {
           <SellingPointsSection />
           <HowItWorksSection />
           <ProductPreviewSection />
+          <NetworkingSection />
           <CompaniesSection />
           <CompanyLogosSection />
           <ReviewsSection />
