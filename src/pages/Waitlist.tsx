@@ -173,7 +173,7 @@ export default function Waitlist() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="flex-1"
+                className="flex-1 h-12 bg-white border-border shadow-sm text-base"
                 disabled={loading}
               />
               <Button type="submit" disabled={loading} className="shrink-0">
