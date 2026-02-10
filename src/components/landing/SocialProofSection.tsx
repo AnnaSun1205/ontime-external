@@ -40,7 +40,7 @@ function AnimatedCounter({ target, suffix, play }: { target: number; suffix: str
     : `${count}`;
 
   return (
-    <span className="text-3xl md:text-5xl font-serif font-semibold text-foreground">
+    <span className="text-2xl md:text-3xl font-serif font-semibold text-foreground">
       {target >= 1000 ? `${(count / 1000).toFixed(1)}k` : count}
       {suffix}
     </span>
@@ -51,12 +51,12 @@ export function SocialProofSection() {
   const { ref, isVisible } = useScrollAnimation(0.3);
 
   return (
-    <section className="py-20 md:py-24 bg-background relative">
+    <section className="py-12 bg-background relative">
       <div className="container">
         <div
           ref={ref}
           className={`
-            grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-12 max-w-5xl mx-auto text-center
+            grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto text-center
             transition-all duration-1000 ease-out
             ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}
           `}
@@ -64,11 +64,11 @@ export function SocialProofSection() {
           {stats.map((stat, i) => (
             <div
               key={stat.label}
-              className="flex flex-col items-center gap-2"
+              className="flex flex-col items-center gap-1"
               style={{ transitionDelay: `${i * 100}ms` }}
             >
               <AnimatedCounter target={stat.value} suffix={stat.suffix} play={isVisible} />
-              <span className="text-sm md:text-base text-muted-foreground font-medium">
+              <span className="text-xs md:text-sm text-muted-foreground font-medium">
                 {stat.label}
               </span>
             </div>
@@ -78,30 +78,30 @@ export function SocialProofSection() {
         {/* Country tracking */}
         <div
           className={`
-            flex items-center justify-center gap-3 md:gap-4 mt-10 flex-wrap
+            flex items-center justify-center gap-4 md:gap-6 mt-12 flex-wrap
             transition-all duration-1000 ease-out delay-500
             ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}
           `}
         >
-          <span className="text-xs text-muted-foreground font-medium">Now tracking:</span>
-          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+          <span className="text-sm md:text-base text-muted-foreground font-medium">Now tracking:</span>
+          <span className="inline-flex items-center gap-2 text-base md:text-lg font-semibold text-foreground">
             🇨🇦 Canada
-            <span className="w-1.5 h-1.5 rounded-full bg-status-live animate-pulse" />
+            <span className="w-2 h-2 rounded-full bg-status-live animate-pulse" />
           </span>
-          <span className="text-border">·</span>
-          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span className="text-border text-lg">·</span>
+          <span className="inline-flex items-center gap-2 text-base md:text-lg text-muted-foreground">
             🇺🇸 US
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
           </span>
-          <span className="text-border">·</span>
-          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span className="text-border text-lg">·</span>
+          <span className="inline-flex items-center gap-2 text-base md:text-lg text-muted-foreground">
             🇬🇧 UK
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
           </span>
-          <span className="text-border">·</span>
-          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span className="text-border text-lg">·</span>
+          <span className="inline-flex items-center gap-2 text-base md:text-lg text-muted-foreground">
             🇦🇺 Australia
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
           </span>
         </div>
       </div>
