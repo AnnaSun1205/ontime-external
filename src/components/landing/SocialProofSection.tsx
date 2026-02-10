@@ -40,7 +40,7 @@ function AnimatedCounter({ target, suffix, play }: { target: number; suffix: str
     : `${count}`;
 
   return (
-    <span className="text-2xl md:text-3xl font-serif font-semibold text-foreground">
+    <span className="text-3xl md:text-5xl font-serif font-semibold text-foreground">
       {target >= 1000 ? `${(count / 1000).toFixed(1)}k` : count}
       {suffix}
     </span>
@@ -83,25 +83,25 @@ export function SocialProofSection() {
             ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}
           `}
         >
-          <span className="text-sm md:text-base text-muted-foreground font-medium">Now tracking:</span>
-          <span className="inline-flex items-center gap-2 text-base md:text-lg font-semibold text-foreground">
+          <span className="text-xs text-muted-foreground font-medium">Now tracking:</span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
             🇨🇦 Canada
-            <span className="w-2 h-2 rounded-full bg-status-live animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-status-live animate-pulse" />
           </span>
-          <span className="text-border text-lg">·</span>
-          <span className="inline-flex items-center gap-2 text-base md:text-lg text-muted-foreground">
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
             🇺🇸 US
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
           </span>
-          <span className="text-border text-lg">·</span>
-          <span className="inline-flex items-center gap-2 text-base md:text-lg text-muted-foreground">
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
             🇬🇧 UK
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
           </span>
-          <span className="text-border text-lg">·</span>
-          <span className="inline-flex items-center gap-2 text-base md:text-lg text-muted-foreground">
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
             🇦🇺 Australia
-            <span className="text-xs px-2 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
           </span>
         </div>
       </div>
