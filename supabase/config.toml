@@ -2,3 +2,6 @@ project_id = "mmrbryazxgrekyvjwule"
 
 [functions.get-job-skills]
 verify_jwt = false
+
+[functions.tailor-resume]
+verify_jwt = true
