@@ -1,0 +1,1 @@
+UPDATE opening_signals SET company_name = 'Shopify' WHERE company_name = 'Internships.shopify' AND source = 'firecrawl_search';
