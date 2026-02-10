@@ -5,13 +5,19 @@ import { Calendar, Bell, Briefcase, User, LogOut, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { QuickActionSheet } from "@/components/app/QuickActionSheet";
 
-const navItems = [
+const navItemsLeft = [
   { href: "/app", icon: Calendar, label: "Calendar" },
   { href: "/app/listings", icon: Briefcase, label: "Listings" },
+];
+
+const navItemsRight = [
   { href: "/app/inbox", icon: Bell, label: "Inbox" },
   { href: "/app/settings", icon: User, label: "Profile" },
 ];
+
+const allNavItems = [...navItemsLeft, ...navItemsRight];
 
 export default function AppLayout() {
   const location = useLocation();
@@ -76,7 +82,7 @@ export default function AppLayout() {
         <div className="container flex h-16 items-center justify-between">
           <Logo size="sm" />
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => (
+            {allNavItems.map((item) => (
               <Link
                 key={item.href}
                 to={item.href}
@@ -108,9 +114,27 @@ export default function AppLayout() {
       </header>
 
       {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-border z-50 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-around">
-          {navItems.map((item) => (
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <div className="flex items-end justify-around">
+          {navItemsLeft.map((item) => (
+            <Link
+              key={item.href}
+              to={item.href}
+              className={cn(
+                "flex flex-col items-center gap-1 py-3 px-4 text-xs font-medium transition-colors",
+                location.pathname === item.href
+                  ? "text-primary"
+                  : "text-muted-foreground"
+              )}
+            >
+              <item.icon className="w-5 h-5" />
+              {item.label}
+            </Link>
+          ))}
+
+          <QuickActionSheet />
+
+          {navItemsRight.map((item) => (
             <Link
               key={item.href}
               to={item.href}
