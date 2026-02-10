@@ -74,6 +74,36 @@ export function SocialProofSection() {
             </div>
           ))}
         </div>
+
+        {/* Country tracking */}
+        <div
+          className={`
+            flex items-center justify-center gap-3 md:gap-4 mt-10 flex-wrap
+            transition-all duration-1000 ease-out delay-500
+            ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}
+          `}
+        >
+          <span className="text-xs text-muted-foreground font-medium">Now tracking:</span>
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            🇨🇦 Canada
+            <span className="w-1.5 h-1.5 rounded-full bg-status-live animate-pulse" />
+          </span>
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            🇺🇸 US
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+          </span>
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            🇬🇧 UK
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+          </span>
+          <span className="text-border">·</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            🇦🇺 Australia
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted font-medium">Coming soon</span>
+          </span>
+        </div>
       </div>
     </section>
   );
