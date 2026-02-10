@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Upload, User, FileText, FileCheck, X, ChevronLeft, Map } from "lucide-react";
-import ontimeIcon from "@/assets/ontime-icon.png";
+import { Plus, Upload, User, FileText, FileCheck, X, ChevronLeft, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
@@ -110,22 +109,16 @@ export function QuickActionSheet() {
         onClick={() => setOpen(true)}
         className={cn(
           "relative -mt-5 flex items-center justify-center w-14 h-14 rounded-full",
-          "bg-primary shadow-lg",
+          "bg-primary text-primary-foreground shadow-lg",
+          "ring-4 ring-background",
           "transition-all duration-300 ease-out",
           "hover:scale-105 hover:shadow-xl",
           "active:scale-95",
-          open && "scale-110"
+          open && "rotate-45 scale-110"
         )}
         aria-label="Quick actions"
       >
-        <img
-          src={ontimeIcon}
-          alt="OnTime"
-          className={cn(
-            "w-7 h-7 object-contain brightness-0 invert transition-transform duration-300",
-            open && "rotate-90"
-          )}
-        />
+        <Plus className="w-6 h-6" strokeWidth={2.5} />
       </button>
 
       {/* Backdrop */}
