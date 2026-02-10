@@ -4,4 +4,4 @@ project_id = "mmrbryazxgrekyvjwule"
 verify_jwt = false
 
 [functions.tailor-resume]
-verify_jwt = true
+verify_jwt = false
