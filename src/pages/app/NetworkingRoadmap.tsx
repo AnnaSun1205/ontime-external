@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Search, Users, MessageCircle, UserCheck, ExternalLink,
-  Sparkles, ChevronDown, ChevronUp, Copy, Check, Mail, Linkedin
+  Sparkles, ChevronDown, ChevronUp, Copy, Check, Mail, Linkedin, GraduationCap
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ type UserInputs = {
 type RoadmapStep = {
   order: number;
   roleTitle: string;
-  category: "gatekeeper" | "peer" | "decision_maker";
+  category: "gatekeeper" | "peer" | "decision_maker" | "insider";
   why: string;
   talkingPoints: string[];
   searchQuery: string;
@@ -60,10 +60,11 @@ const SENIORITY_OPTIONS = [
   { value: "3_5" as const, label: "3–5 years experience" },
 ];
 
-const categoryConfig = {
+const categoryConfig: Record<string, { label: string; color: string }> = {
   gatekeeper: { label: "Gatekeeper", color: "bg-blue-50 text-blue-700 border-blue-200" },
   peer: { label: "Peer", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   decision_maker: { label: "Decision Maker", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  insider: { label: "Insider", color: "bg-violet-50 text-violet-700 border-violet-200" },
 };
 
 const goalLabel: Record<UserGoal, string> = {
@@ -106,9 +107,21 @@ function generateMockRoadmap(inputs: UserInputs): RoadmapData {
     ? `Hi! I'm a ${seniorityLabel.toLowerCase()}${schoolLine} preparing for ${role} interviews at ${company}. As a hiring manager, I'd love any insight into what you look for in candidates during the interview process. Even a few pointers would be incredibly valuable.`
     : `Hi! I'm a ${seniorityLabel.toLowerCase()}${schoolLine} exploring the ${role} role at ${company}${locationLine}. I'd love to learn about your team's roadmap and how someone in this role would contribute. Would you be open to a brief chat?`;
 
+  const internMsg = goal === "referral"
+    ? `Hi! I saw that you interned at ${company}${locationLine} — congratulations! I'm a ${seniorityLabel.toLowerCase()}${schoolLine} applying for the ${role} position and would love to hear about your experience. If you're comfortable, I'd also appreciate any advice on getting a referral. Would you be open to a quick chat?`
+    : goal === "resume_feedback"
+    ? `Hi! I noticed you interned at ${company} — I'm a ${seniorityLabel.toLowerCase()}${schoolLine} preparing my application for ${role}. I'd love to hear what stood out on your resume and any tips for tailoring mine. Would you have 10 minutes?`
+    : goal === "interview_prep"
+    ? `Hi! I saw you completed an internship at ${company}. I'm a ${seniorityLabel.toLowerCase()}${schoolLine} preparing for ${role} interviews there. I'd really appreciate hearing about your interview experience — what topics came up, what to prepare for, etc. Would you be open to chatting?`
+    : `Hi! I noticed you interned at ${company}${locationLine} — I'm a ${seniorityLabel.toLowerCase()}${schoolLine} interested in the ${role} role. I'd love to hear about your experience on the team, the culture, and what you worked on. Would you be up for a quick coffee chat?`;
+
+  // Extract a "base role" from user input for search (e.g. "Software Engineer" from "Software Engineer Intern")
+  const baseRole = role.replace(/\b(intern|internship|co-?op|new grad|junior|entry level)\b/gi, "").trim() || role;
+
   const linkedinBase = "https://www.linkedin.com/search/results/people/?keywords=";
   const googleBase = "https://www.google.com/search?q=";
   const locQuery = location ? ` ${location}` : "";
+  const schoolQuery = school ? ` ${school.split(",")[0].trim()}` : "";
 
   return {
     company,
@@ -119,7 +132,7 @@ function generateMockRoadmap(inputs: UserInputs): RoadmapData {
       {
         order: 1,
         roleTitle: seniority === "student" ? "University Recruiter" : "Talent Acquisition Partner",
-        category: "gatekeeper",
+        category: "gatekeeper" as const,
         why: seniority === "student"
           ? "They manage the campus pipeline and know exactly when applications open. Building rapport early puts you on their radar."
           : "They source candidates for this role and can fast-track your application or connect you with hiring managers directly.",
@@ -128,33 +141,50 @@ function generateMockRoadmap(inputs: UserInputs): RoadmapData {
           goal === "referral" ? "Mention you're open to a referral if appropriate" : `Share that your goal is ${goalLabel[goal].toLowerCase()}`,
           "Learn what qualities they prioritize in candidates",
         ],
-        searchQuery: `${company} ${seniority === "student" ? "University Recruiter" : "Recruiter"} ${role}`,
-        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} ${seniority === "student" ? "University Recruiter" : "Recruiter"}${locQuery}`)}`,
-        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "${seniority === "student" ? "University Recruiter" : "Recruiter"}"${locQuery}`)}`,
+        searchQuery: `${company} Recruiter ${role}`,
+        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} ${seniority === "student" ? "University Recruiter" : "Recruiter"} ${baseRole}${locQuery}`)}`,
+        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "${seniority === "student" ? "University Recruiter" : "Recruiter"}" "${baseRole}"${locQuery}`)}`,
         outreachMessage: recruiterMsg,
         icon: UserCheck,
       },
       {
         order: 2,
-        roleTitle: seniority === "student" ? "Software Engineer (L3–L4)" : "Senior Software Engineer",
-        category: "peer",
+        roleTitle: `Current / Former ${role.includes("Intern") || role.includes("intern") ? "Intern" : "Junior"} at ${company}`,
+        category: "insider" as const,
+        why: "They've been exactly where you want to be. They can share the real interview experience, what the day-to-day is like, and practical tips that only someone who's done the role would know.",
+        talkingPoints: [
+          "Ask about their interview experience and how they prepared",
+          "Learn what a typical day looked like during their internship",
+          "Ask what they wish they knew before starting",
+          goal === "referral" ? "If they're still at the company, ask if they'd be open to referring you" : "",
+        ].filter(Boolean),
+        searchQuery: `${company} ${role}`,
+        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} ${role}${locQuery}${schoolQuery}`)}`,
+        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "${role}"${locQuery}${schoolQuery}`)}`,
+        outreachMessage: internMsg,
+        icon: GraduationCap,
+      },
+      {
+        order: 3,
+        roleTitle: `${baseRole} (Full-time)`,
+        category: "peer" as const,
         why: "Current engineers give you the real picture — team culture, tech stack, and growth. They're also the most common source of internal referrals.",
         talkingPoints: [
           "Ask about their team's current projects and tech stack",
-          seniority === "student" ? "Learn what the intern / new grad experience is like" : "Ask how the team evaluates candidates at your level",
+          seniority === "student" ? "Learn what the intern / new grad experience is like on their team" : "Ask how the team evaluates candidates at your level",
           "Ask for advice on the technical interview process",
           goal === "referral" ? "If the conversation goes well, ask if they'd be open to referring you" : "",
         ].filter(Boolean),
-        searchQuery: `${company} Software Engineer`,
-        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} Software Engineer${locQuery}`)}`,
-        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "Software Engineer"${locQuery}`)}`,
+        searchQuery: `${company} ${baseRole}`,
+        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} ${baseRole}${locQuery}`)}`,
+        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "${baseRole}"${locQuery}`)}`,
         outreachMessage: engineerMsg,
         icon: Users,
       },
       {
-        order: 3,
-        roleTitle: "Engineering Manager / Tech Lead",
-        category: "decision_maker",
+        order: 4,
+        roleTitle: `${baseRole} Manager / Tech Lead`,
+        category: "decision_maker" as const,
         why: "They make final hiring decisions. A warm intro from a recruiter or engineer makes this conversation much more impactful — save this step for last.",
         talkingPoints: [
           "Share your specific interests and how they align with the team",
@@ -162,9 +192,9 @@ function generateMockRoadmap(inputs: UserInputs): RoadmapData {
           goal === "referral" ? "Express genuine interest — a manager referral carries significant weight" : `Ask about ${goalLabel[goal].toLowerCase()} from a leadership perspective`,
           "Discuss what makes a candidate stand out during the program",
         ],
-        searchQuery: `${company} Engineering Manager`,
-        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} Engineering Manager${locQuery}`)}`,
-        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "Engineering Manager"${locQuery}`)}`,
+        searchQuery: `${company} ${baseRole} Manager`,
+        linkedinSearchUrl: `${linkedinBase}${encodeURIComponent(`${company} ${baseRole} Manager${locQuery}`)}`,
+        googleSearchUrl: `${googleBase}${encodeURIComponent(`site:linkedin.com "${company}" "${baseRole}" "Manager"${locQuery}`)}`,
         outreachMessage: managerMsg,
         icon: MessageCircle,
       },
