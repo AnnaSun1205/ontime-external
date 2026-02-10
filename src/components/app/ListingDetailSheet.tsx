@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ExternalLink, MapPin, Loader2, Sparkles, Plus, Check, FileText, ArrowRight, Download, ChevronLeft, X, Copy } from "lucide-react";
+import { ExternalLink, MapPin, Loader2, Sparkles, Plus, Check, FileText, ArrowRight, Download, ChevronLeft, X, Copy, CheckCircle2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -65,6 +65,7 @@ function ResultsView({
   onBack: () => void;
 }) {
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+  const [acceptedIdxs, setAcceptedIdxs] = useState<Set<number>>(new Set());
 
   const matchColor =
     tailorResult.overall_match >= 70
@@ -127,70 +128,101 @@ function ResultsView({
           {tailorResult.suggestions.length} sections to improve · tap highlighted areas
         </p>
 
-        {tailorResult.suggestions.map((s, i) => (
-          <div key={i} className="relative">
-            {/* The highlighted resume section */}
-            <button
-              onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
-              className={cn(
-                "w-full text-left rounded-lg p-3 transition-all border",
-                expandedIdx === i
-                  ? "bg-[hsl(48,100%,92%)] border-[hsl(48,80%,65%)] shadow-sm"
-                  : "bg-[hsl(48,100%,95%)] border-[hsl(48,80%,80%)] hover:bg-[hsl(48,100%,90%)] hover:border-[hsl(48,80%,70%)]"
-              )}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-semibold text-foreground">{s.section}</span>
-                <span className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                  expandedIdx === i ? "bg-[hsl(48,80%,65%)]/30 text-[hsl(30,60%,30%)]" : "bg-[hsl(48,80%,75%)]/30 text-[hsl(30,50%,40%)]"
-                )}>
-                  {expandedIdx === i ? "viewing" : "click to edit"}
-                </span>
-              </div>
-              <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2">
-                {s.current}
-              </p>
-            </button>
+        {tailorResult.suggestions.map((s, i) => {
+          const isAccepted = acceptedIdxs.has(i);
 
-            {/* Expanded suggestion popover */}
-            {expandedIdx === i && (
-              <div className="mt-2 mb-3 rounded-xl border border-primary/20 bg-card shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/10 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-primary">✨ Suggested Edit</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setExpandedIdx(null); }}
-                    className="p-0.5 rounded hover:bg-primary/10 transition-colors"
-                  >
-                    <X className="w-3 h-3 text-primary/60" />
-                  </button>
+          // Accepted state — green, collapsed
+          if (isAccepted) {
+            return (
+              <div key={i} className="rounded-lg p-3 border border-[hsl(142,60%,75%)] bg-[hsl(142,60%,95%)] transition-all">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-foreground">{s.section}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-[hsl(142,60%,75%)]/30 text-[hsl(142,40%,30%)] flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> accepted
+                  </span>
                 </div>
-                <div className="p-4 space-y-3">
-                  <div className="bg-primary/[0.04] rounded-lg p-3 border border-primary/10">
-                    <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{s.suggested}</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-[10px] font-medium text-muted-foreground mt-0.5 shrink-0">Why:</span>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">{s.reason}</p>
-                  </div>
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-[11px] h-7 flex-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(s.suggested);
-                      }}
-                    >
-                      <Copy className="w-3 h-3 mr-1" /> Copy text
-                    </Button>
-                  </div>
-                </div>
+                <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2">{s.suggested}</p>
               </div>
-            )}
-          </div>
-        ))}
+            );
+          }
+
+          return (
+            <div key={i} className="relative">
+              {/* The highlighted resume section */}
+              <button
+                onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
+                className={cn(
+                  "w-full text-left rounded-lg p-3 transition-all border",
+                  expandedIdx === i
+                    ? "bg-[hsl(48,100%,92%)] border-[hsl(48,80%,65%)] shadow-sm"
+                    : "bg-[hsl(48,100%,95%)] border-[hsl(48,80%,80%)] hover:bg-[hsl(48,100%,90%)] hover:border-[hsl(48,80%,70%)]"
+                )}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-foreground">{s.section}</span>
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                    expandedIdx === i ? "bg-[hsl(48,80%,65%)]/30 text-[hsl(30,60%,30%)]" : "bg-[hsl(48,80%,75%)]/30 text-[hsl(30,50%,40%)]"
+                  )}>
+                    {expandedIdx === i ? "viewing" : "click to edit"}
+                  </span>
+                </div>
+                <p className="text-xs text-foreground/70 leading-relaxed line-clamp-2">
+                  {s.current}
+                </p>
+              </button>
+
+              {/* Expanded suggestion popover */}
+              {expandedIdx === i && (
+                <div className="mt-2 mb-3 rounded-xl border border-primary/20 bg-card shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="px-4 py-2.5 bg-primary/5 border-b border-primary/10 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-primary">✨ Suggested Edit</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setExpandedIdx(null); }}
+                      className="p-0.5 rounded hover:bg-primary/10 transition-colors"
+                    >
+                      <X className="w-3 h-3 text-primary/60" />
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="bg-primary/[0.04] rounded-lg p-3 border border-primary/10">
+                      <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap">{s.suggested}</p>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-[10px] font-medium text-muted-foreground mt-0.5 shrink-0">Why:</span>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{s.reason}</p>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="text-[11px] h-7 flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAcceptedIdxs((prev) => new Set(prev).add(i));
+                          setExpandedIdx(null);
+                        }}
+                      >
+                        <CheckCircle2 className="w-3 h-3 mr-1" /> Accept suggestion
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-[11px] h-7 flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(s.suggested);
+                        }}
+                      >
+                        <Pencil className="w-3 h-3 mr-1" /> Edit myself
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Bottom actions */}
