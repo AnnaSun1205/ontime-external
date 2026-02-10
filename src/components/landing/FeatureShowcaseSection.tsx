@@ -1,6 +1,6 @@
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
 import { useState, useEffect, useRef } from "react";
-import { Calendar, Inbox, Users, ExternalLink, MapPin, Sparkles } from "lucide-react";
+import { Calendar, Inbox, Users, ExternalLink, MapPin, Sparkles, Search, Linkedin } from "lucide-react";
 import ontimeIcon from "@/assets/ontime-icon.png";
 
 /* ─── Calendar Animation ─── */
@@ -311,6 +311,113 @@ function NetworkingMockup({ play }: { play: boolean }) {
   );
 }
 
+/* ─── LinkedIn Outreach Animation ─── */
+function LinkedInMockup({ play }: { play: boolean }) {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (!play) return;
+    setStep(0);
+    const run = () => {
+      setStep(0);
+      return [
+        setTimeout(() => setStep(1), 300),  // search bar fills
+        setTimeout(() => setStep(2), 1000), // results appear
+        setTimeout(() => setStep(3), 1600), // profile 1
+        setTimeout(() => setStep(4), 2100), // profile 2
+        setTimeout(() => setStep(5), 2600), // profile 3
+        setTimeout(() => setStep(6), 3200), // message draft
+        setTimeout(() => setStep(0), 5500),
+      ];
+    };
+    let timers = run();
+    const loop = setInterval(() => { timers = run(); }, 5500);
+    return () => { timers.forEach(clearTimeout); clearInterval(loop); };
+  }, [play]);
+
+  const profiles = [
+    { name: "Sarah Chen", title: "Campus Recruiter at Google", initials: "SC", color: "bg-status-opens-soon/20 text-status-opens-soon" },
+    { name: "James Park", title: "SWE Intern '24 at Google", initials: "JP", color: "bg-status-prepare/20 text-status-prepare" },
+    { name: "Priya Sharma", title: "Engineering Manager at Google", initials: "PS", color: "bg-primary/20 text-primary" },
+  ];
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Linkedin className="w-4 h-4 text-[#0A66C2]" />
+          <span className="font-semibold text-sm">Find on LinkedIn</span>
+        </div>
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#0A66C2]/10 text-[#0A66C2] font-medium">Auto-search</span>
+      </div>
+
+      {/* Search bar */}
+      <div className={`
+        flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-background mb-4
+        transition-all duration-500
+        ${step >= 1 ? "border-[#0A66C2]/30 shadow-sm" : ""}
+      `}>
+        <Search className="w-3 h-3 text-muted-foreground" />
+        <span className={`
+          text-[11px] transition-all duration-700
+          ${step >= 1 ? "text-foreground" : "text-muted-foreground"}
+        `}>
+          {step >= 1 ? "Google SWE Intern recruiter" : "Search people..."}
+        </span>
+        {step >= 1 && (
+          <span className="ml-auto w-1.5 h-3.5 bg-[#0A66C2] animate-pulse rounded-sm" />
+        )}
+      </div>
+
+      {/* Results */}
+      <div className="space-y-2">
+        {profiles.map((profile, i) => (
+          <div
+            key={i}
+            className={`
+              flex items-center gap-3 p-2.5 rounded-xl border border-border bg-background
+              transition-all duration-500 ease-out
+              ${step >= i + 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}
+            `}
+            style={{ transitionDelay: `${i * 60}ms` }}
+          >
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${profile.color}`}>
+              {profile.initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold truncate">{profile.name}</p>
+              <p className="text-[9px] text-muted-foreground truncate">{profile.title}</p>
+            </div>
+            <a className="text-[9px] font-medium text-[#0A66C2] flex items-center gap-0.5 flex-shrink-0">
+              Connect <ExternalLink className="w-2 h-2" />
+            </a>
+          </div>
+        ))}
+      </div>
+
+      {/* Message draft preview */}
+      <div className={`
+        mt-3 pt-3 border-t border-border transition-all duration-600 ease-out
+        ${step >= 6 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}
+      `}>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Sparkles className="w-3 h-3 text-primary" />
+          <span className="text-[10px] font-semibold">AI outreach draft</span>
+        </div>
+        <div className="bg-background border border-border rounded-lg p-2.5">
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            "Hi Sarah, I'm a CS student at UWaterloo interested in Google's SWE internship. I'd love to learn about your experience recruiting for the team…"
+          </p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Copy</span>
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">Customize</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Main Section ─── */
 const features = [
   {
@@ -333,6 +440,13 @@ const features = [
     description:
       "A structured GPS for company outreach — from gatekeepers to insiders. Know exactly who to reach and when.",
     Mockup: NetworkingMockup,
+  },
+  {
+    icon: Linkedin,
+    title: "Find people on LinkedIn",
+    description:
+      "Auto-generated search links surface the right contacts. Plus, AI-drafted outreach messages you can copy and send.",
+    Mockup: LinkedInMockup,
   },
 ];
 
