@@ -36,6 +36,12 @@ export function Header() {
             </a>
           ))}
           <Link
+            to="/waitlist"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Join Waitlist
+          </Link>
+          <Link
             to="/login"
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
@@ -78,6 +84,13 @@ export function Header() {
               {link.label}
             </a>
           ))}
+          <Link
+            to="/waitlist"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground py-2"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            Join Waitlist
+          </Link>
           <Link
             to="/login"
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground py-2"
