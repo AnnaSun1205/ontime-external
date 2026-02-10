@@ -7,6 +7,7 @@ import { IntroAnimation } from "@/components/landing/IntroAnimation";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { SellingPointsSection } from "@/components/landing/SellingPointsSection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
+import { FeatureShowcaseSection } from "@/components/landing/FeatureShowcaseSection";
 import { ProductPreviewSection } from "@/components/landing/ProductPreviewSection";
 import { NetworkingSection } from "@/components/landing/NetworkingSection";
 import { CompaniesSection } from "@/components/landing/CompaniesSection";
@@ -98,6 +99,7 @@ const Index = () => {
           <HeroSection />
           <SellingPointsSection />
           <HowItWorksSection />
+          <FeatureShowcaseSection />
           <ProductPreviewSection />
           <NetworkingSection />
           <CompaniesSection />
