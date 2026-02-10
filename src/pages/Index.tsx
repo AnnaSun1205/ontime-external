@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { IntroAnimation } from "@/components/landing/IntroAnimation";
 import { HeroSection } from "@/components/landing/HeroSection";
+import { SocialProofSection } from "@/components/landing/SocialProofSection";
 import { SellingPointsSection } from "@/components/landing/SellingPointsSection";
 import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
 import { FeatureShowcaseSection } from "@/components/landing/FeatureShowcaseSection";
@@ -14,8 +15,10 @@ import { CompaniesSection } from "@/components/landing/CompaniesSection";
 import { CompanyLogosSection } from "@/components/landing/CompanyLogosSection";
 import { PricingSection } from "@/components/landing/PricingSection";
 import { ReviewsSection } from "@/components/landing/ReviewsSection";
+import { FounderStorySection } from "@/components/landing/FounderStorySection";
 import { FAQSection } from "@/components/landing/FAQSection";
 import { FinalCTA } from "@/components/landing/FinalCTA";
+import { StickyCTA } from "@/components/landing/StickyCTA";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -97,6 +100,7 @@ const Index = () => {
         <Header />
         <main className="flex-1">
           <HeroSection />
+          <SocialProofSection />
           <SellingPointsSection />
           <HowItWorksSection />
           <FeatureShowcaseSection />
@@ -105,11 +109,13 @@ const Index = () => {
           <CompaniesSection />
           <CompanyLogosSection />
           <ReviewsSection />
+          <FounderStorySection />
           <PricingSection />
           <FAQSection />
           <FinalCTA />
         </main>
         <Footer />
+        <StickyCTA />
       </div>
     </div>
   );

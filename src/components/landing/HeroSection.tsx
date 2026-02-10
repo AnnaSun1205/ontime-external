@@ -30,7 +30,7 @@ export function HeroSection() {
   return (
     <section
       ref={sectionRef}
-      className="relative min-h-[90vh] flex items-center overflow-hidden py-20 md:py-28"
+      className="relative min-h-[85vh] md:min-h-[90vh] flex items-center overflow-hidden py-12 md:py-20 lg:py-28"
       style={{ background: "linear-gradient(180deg, hsl(30 30% 96%) 0%, hsl(214 100% 96%) 100%)" }}
     >
       {/* Soft decorative blobs */}
@@ -58,10 +58,10 @@ export function HeroSection() {
             </div>
 
             <h1 className="mb-4">
-              <span className="block font-serif text-5xl sm:text-6xl lg:text-[4.25rem] xl:text-7xl text-foreground leading-[1.1] tracking-tight">
+              <span className="block font-serif text-4xl sm:text-5xl lg:text-[4.25rem] xl:text-7xl text-foreground leading-[1.1] tracking-tight">
                 Stay ahead of
               </span>
-              <span className="block font-serif text-5xl sm:text-6xl lg:text-[4.25rem] xl:text-7xl text-foreground leading-[1.1] tracking-tight mt-1">
+              <span className="block font-serif text-4xl sm:text-5xl lg:text-[4.25rem] xl:text-7xl text-foreground leading-[1.1] tracking-tight mt-1">
                 the best internships
               </span>
             </h1>
@@ -106,7 +106,7 @@ export function HeroSection() {
           </div>
 
           {/* Right: Phone mockup */}
-          <div className="flex justify-center mx-auto lg:mx-0 lg:justify-start max-w-[320px] lg:max-w-none">
+          <div className="flex justify-center mx-auto lg:mx-0 lg:justify-start max-w-[260px] sm:max-w-[320px] lg:max-w-none">
             <div
               className={cn(
                 "relative transition-all duration-1000 ease-out",
@@ -114,7 +114,7 @@ export function HeroSection() {
               )}
             >
               {/* iPhone Frame */}
-              <div className="relative w-[260px] md:w-[300px] h-[520px] md:h-[600px] bg-[#1a1a1a] rounded-[40px] md:rounded-[50px] p-2.5 shadow-2xl">
+              <div className="relative w-[220px] sm:w-[260px] md:w-[300px] h-[440px] sm:h-[520px] md:h-[600px] bg-[#1a1a1a] rounded-[36px] sm:rounded-[40px] md:rounded-[50px] p-2 sm:p-2.5 shadow-2xl">
                 {/* Dynamic Island */}
                 <div className="absolute top-3.5 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-full z-20" />
 
