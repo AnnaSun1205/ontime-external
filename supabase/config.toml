@@ -1,1 +1,4 @@
 project_id = "mmrbryazxgrekyvjwule"
+
+[functions.get-job-skills]
+verify_jwt = false

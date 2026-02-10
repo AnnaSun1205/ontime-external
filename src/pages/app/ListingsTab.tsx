@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { ListingDetailSheet } from "@/components/app/ListingDetailSheet";
 
 interface Listing {
   id: string;
@@ -184,6 +185,7 @@ export default function ListingsTab() {
   const [userId, setUserId] = useState<string | null>(null);
   const [inboxListingIds, setInboxListingIds] = useState<Set<string>>(new Set());
   const [seenListingIds, setSeenListingIds] = useState<Set<string>>(new Set());
+  const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   
   // Compute current cutoff based on selected country
   const lastSeenListingsAt = countryFilter === "canada" ? lastSeenListingsAtCa : lastSeenListingsAtUs;
@@ -1029,8 +1031,9 @@ export default function ListingsTab() {
           return (
             <div
               key={listing.id}
+              onClick={() => setSelectedListing(listing)}
                   className={cn(
-                    "border rounded-xl p-4 shadow-sm hover:shadow-md transition-all",
+                    "border rounded-xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer",
                     isInInbox && "opacity-60",
                     isUnreadListing && !isInInbox
                       ? "bg-amber-50 border-amber-200"
@@ -1050,7 +1053,7 @@ export default function ListingsTab() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => handleSave(listing)}
+                  onClick={(e) => { e.stopPropagation(); handleSave(listing); }}
                   className={cn(
                     "h-8 w-8 shrink-0",
                     isSaved && "text-primary"
@@ -1083,7 +1086,7 @@ export default function ListingsTab() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleAddToInbox(listing)}
+                          onClick={(e) => { e.stopPropagation(); handleAddToInbox(listing); }}
                           disabled={isInInbox}
                           className="h-7 text-xs"
                         >
@@ -1096,6 +1099,7 @@ export default function ListingsTab() {
                   href={listing.applyUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                           className={cn(
                             "flex items-center gap-1 text-sm font-medium hover:underline",
                             isInInbox ? "text-muted-foreground" : "text-primary"
@@ -1123,6 +1127,14 @@ export default function ListingsTab() {
           )}
         </>
       )}
+
+      <ListingDetailSheet
+        listing={selectedListing}
+        open={!!selectedListing}
+        onOpenChange={(open) => { if (!open) setSelectedListing(null); }}
+        isInInbox={selectedListing ? inboxListingIds.has(selectedListing.id) : false}
+        onAddToInbox={() => { if (selectedListing) handleAddToInbox(selectedListing); }}
+      />
     </div>
   );
 }
