@@ -388,7 +388,7 @@ const COMPANY_NAME_MAP: Record<string, string> = {
   "intactfc": "Intact Financial", "cnrl": "Canadian Natural Resources",
   "gdmissionsystems": "General Dynamics", "asc-csa.gc": "Canadian Space Agency",
   "pepsicojobs": "PepsiCo", "worley": "Worley",
-  "internships.shopify": "Shopify", "jobs.rbc": "RBC", "jobs.bmo": "BMO",
+  "internships.shopify": "Shopify", "internships": "Shopify", "jobs.rbc": "RBC", "jobs.bmo": "BMO",
 };
 
 function extractCompanyFromUrl(url: string): string | null {
