@@ -113,7 +113,7 @@ export function ReviewsSection() {
         >
           <h2 
             className={`
-              text-3xl md:text-4xl font-bold mb-4 transition-all duration-700 ease-out
+              text-3xl md:text-4xl font-serif mb-4 transition-all duration-700 ease-out
               ${headerVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}
             `}
             style={{ transitionDelay: "100ms" }}

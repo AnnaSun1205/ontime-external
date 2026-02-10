@@ -42,7 +42,7 @@ export function FAQSection() {
       
       <div className="container relative z-10">
         <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-4">Frequently asked questions</h2>
+          <h2 className="text-3xl md:text-4xl font-serif mb-4">Frequently asked questions</h2>
           <p className="text-muted-foreground max-w-lg mx-auto">
             Got questions? We've got answers.
           </p>
