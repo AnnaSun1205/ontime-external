@@ -41,11 +41,11 @@ export function HeroSection() {
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-b from-transparent to-background pointer-events-none" />
 
       <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 md:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr,auto] gap-12 lg:gap-16 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr,auto] gap-12 md:gap-10 lg:gap-16 items-center">
           {/* Left: Copy */}
           <div
             className={cn(
-              "transition-all duration-1000 ease-out max-w-xl lg:max-w-none",
+              "transition-all duration-1000 ease-out max-w-xl",
               phoneVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-8"
             )}
           >
@@ -106,7 +106,7 @@ export function HeroSection() {
           </div>
 
           {/* Right: Phone mockup */}
-          <div className="flex justify-center mx-auto lg:mx-0 lg:justify-start max-w-[260px] sm:max-w-[320px] lg:max-w-none">
+          <div className="hidden md:flex justify-center mx-auto md:mx-0 md:justify-start max-w-none">
             <div
               className={cn(
                 "relative transition-all duration-1000 ease-out",
