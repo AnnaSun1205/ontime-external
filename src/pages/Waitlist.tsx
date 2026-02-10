@@ -10,20 +10,52 @@ import { z } from "zod";
 
 const emailSchema = z.string().trim().email("Please enter a valid email").max(255, "Email is too long");
 
-const COMPANIES = [
-  "Google", "Meta", "Amazon", "Apple", "Microsoft", "Tesla", "Netflix",
-  "Shopify", "Stripe", "Airbnb", "Uber", "Spotify", "Adobe", "Salesforce",
-  "Goldman Sachs", "JPMorgan", "Morgan Stanley", "Citadel", "Jane Street",
-  "Databricks", "Snowflake", "Palantir", "Coinbase", "Figma", "Notion",
-  "Slack", "Dropbox", "Pinterest", "Snap", "Twitter", "LinkedIn",
-  "Intel", "AMD", "NVIDIA", "Oracle", "IBM", "SAP", "Cisco",
+const COMPANIES: { name: string; domain: string }[] = [
+  { name: "Google", domain: "google.com" },
+  { name: "Meta", domain: "meta.com" },
+  { name: "Amazon", domain: "amazon.com" },
+  { name: "Apple", domain: "apple.com" },
+  { name: "Microsoft", domain: "microsoft.com" },
+  { name: "Tesla", domain: "tesla.com" },
+  { name: "Netflix", domain: "netflix.com" },
+  { name: "Shopify", domain: "shopify.com" },
+  { name: "Stripe", domain: "stripe.com" },
+  { name: "Airbnb", domain: "airbnb.com" },
+  { name: "Uber", domain: "uber.com" },
+  { name: "Spotify", domain: "spotify.com" },
+  { name: "Adobe", domain: "adobe.com" },
+  { name: "Salesforce", domain: "salesforce.com" },
+  { name: "Goldman Sachs", domain: "goldmansachs.com" },
+  { name: "JPMorgan", domain: "jpmorgan.com" },
+  { name: "Morgan Stanley", domain: "morganstanley.com" },
+  { name: "Citadel", domain: "citadel.com" },
+  { name: "Jane Street", domain: "janestreet.com" },
+  { name: "Databricks", domain: "databricks.com" },
+  { name: "Snowflake", domain: "snowflake.com" },
+  { name: "Palantir", domain: "palantir.com" },
+  { name: "Coinbase", domain: "coinbase.com" },
+  { name: "Figma", domain: "figma.com" },
+  { name: "Notion", domain: "notion.so" },
+  { name: "Slack", domain: "slack.com" },
+  { name: "Dropbox", domain: "dropbox.com" },
+  { name: "Pinterest", domain: "pinterest.com" },
+  { name: "Snap", domain: "snap.com" },
+  { name: "Twitter", domain: "twitter.com" },
+  { name: "LinkedIn", domain: "linkedin.com" },
+  { name: "Intel", domain: "intel.com" },
+  { name: "AMD", domain: "amd.com" },
+  { name: "NVIDIA", domain: "nvidia.com" },
+  { name: "Oracle", domain: "oracle.com" },
+  { name: "IBM", domain: "ibm.com" },
+  { name: "SAP", domain: "sap.com" },
+  { name: "Cisco", domain: "cisco.com" },
 ];
 
 const ROW1 = COMPANIES.slice(0, 13);
 const ROW2 = COMPANIES.slice(13, 26);
 const ROW3 = COMPANIES.slice(26);
 
-function MarqueeRow({ items, duration, reverse = false }: { items: string[]; duration: number; reverse?: boolean }) {
+function MarqueeRow({ items, duration, reverse = false }: { items: typeof COMPANIES; duration: number; reverse?: boolean }) {
   const doubled = [...items, ...items];
   return (
     <div className="flex overflow-hidden select-none pointer-events-none">
@@ -31,12 +63,19 @@ function MarqueeRow({ items, duration, reverse = false }: { items: string[]; dur
         className={`flex shrink-0 gap-4 ${reverse ? "animate-[marquee-reverse_var(--duration)_linear_infinite]" : "animate-[marquee_var(--duration)_linear_infinite]"}`}
         style={{ "--duration": `${duration}s` } as React.CSSProperties}
       >
-        {doubled.map((name, i) => (
+        {doubled.map((company, i) => (
           <span
-            key={`${name}-${i}`}
-            className="inline-flex items-center px-5 py-2 rounded-full border border-border/60 bg-background/80 text-sm font-medium text-muted-foreground whitespace-nowrap backdrop-blur-sm"
+            key={`${company.name}-${i}`}
+            className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full border border-border/60 bg-background/80 text-sm font-medium text-muted-foreground whitespace-nowrap backdrop-blur-sm"
           >
-            {name}
+            <img
+              src={`https://logo.clearbit.com/${company.domain}`}
+              alt=""
+              className="w-5 h-5 rounded-full object-contain"
+              loading="lazy"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+            {company.name}
           </span>
         ))}
       </div>
@@ -106,7 +145,7 @@ export default function Waitlist() {
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 relative z-10">
-        <div className="w-full max-w-md text-center space-y-8">
+        <div className="w-full max-w-md text-center space-y-8 bg-card rounded-2xl p-8 shadow-lg border border-border/40">
           <Logo size="md" />
 
           <div className="space-y-3">
