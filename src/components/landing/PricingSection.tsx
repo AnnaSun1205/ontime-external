@@ -2,11 +2,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Check, X } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { SketchSeedling, SketchSapling, SketchTree } from "./HandDrawnIcons";
 const plans = [{
   name: "Free",
   price: "$0",
   period: "forever",
   description: "Get started",
+  TierIcon: SketchSeedling,
   features: [{
     text: "Track up to 3 companies",
     included: true
@@ -31,6 +33,7 @@ const plans = [{
   price: "$15",
   period: "month",
   description: "Full access",
+  TierIcon: SketchSapling,
   features: [{
     text: "Track up to 15 companies",
     included: true
@@ -57,6 +60,7 @@ const plans = [{
   description: "Best value",
   savings: "Save 35%",
   recommended: true,
+  TierIcon: SketchTree,
   features: [{
     text: "Everything in Monthly",
     included: true
@@ -131,6 +135,7 @@ function PricingCard({
         </span>}
       
       <div className="mb-6">
+        <plan.TierIcon className="text-foreground mb-3" size={36} />
         <h3 className="text-xl font-semibold mb-1">{plan.name}</h3>
         <p className="text-sm text-muted-foreground">{plan.description}</p>
       </div>

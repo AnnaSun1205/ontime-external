@@ -1,17 +1,17 @@
-import { Calendar, Bell, Target } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { SketchCalendar, SketchBell, SketchTarget } from "./HandDrawnIcons";
 const steps = [{
-  icon: Calendar,
+  Icon: SketchCalendar,
   number: "01",
   title: "Know when internships open",
   description: "We track historical recruiting data to predict when applications will open — so you're never late."
 }, {
-  icon: Bell,
+  Icon: SketchBell,
   number: "02",
   title: "Get notified 7 days early",
   description: "Receive prep signals before roles open, so you can get ready and apply the moment postings go live."
 }, {
-  icon: Target,
+  Icon: SketchTarget,
   number: "03",
   title: "Know when it's worth applying",
   description: "Clear urgency labels show what needs attention now — and what can wait. No guesswork."
@@ -37,7 +37,7 @@ function StepCard({
         <div className="flex items-start gap-6">
           <div className="flex-shrink-0">
             <div className="w-14 h-14 rounded-2xl bg-surface-soft flex items-center justify-center">
-              <step.icon className="w-6 h-6 text-foreground" />
+              <step.Icon className="text-foreground" size={32} />
             </div>
           </div>
           <div className="flex-1">

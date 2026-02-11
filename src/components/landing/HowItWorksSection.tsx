@@ -1,15 +1,15 @@
-import { Building2, Calendar, Mail } from "lucide-react";
 import { useScrollAnimation } from "@/hooks/useScrollAnimation";
+import { SketchBuilding, SketchCalendarSpark, SketchEnvelope } from "./HandDrawnIcons";
 const steps = [{
-  icon: Building2,
+  Icon: SketchBuilding,
   title: "Pick companies & roles",
   description: "Select the companies you're interested in and the roles you want to track."
 }, {
-  icon: Calendar,
+  Icon: SketchCalendarSpark,
   title: "We generate your OnTime calendar",
   description: "Based on historical data, we predict when applications will open."
 }, {
-  icon: Mail,
+  Icon: SketchEnvelope,
   title: "You only get emails when action is required",
   description: "Prep signals before deadlines. Live signals when postings go up."
 }];
@@ -49,7 +49,7 @@ export function HowItWorksSection() {
           }}>
                 <div className="mb-6 relative">
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm border border-border bg-card">
-                    <step.icon className="w-7 h-7 text-primary" />
+                    <step.Icon className="text-primary" size={34} />
                   </div>
                   <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-foreground text-background text-sm font-medium flex items-center justify-center">
                     {index + 1}
