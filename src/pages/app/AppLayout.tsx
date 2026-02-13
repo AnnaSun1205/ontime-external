@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Logo } from "@/components/Logo";
-import { Calendar, Bell, Briefcase, User, LogOut, Loader2 } from "lucide-react";
+import { Calendar, Bell, Briefcase, User, LogOut, Loader2, Map } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ const navItemsLeft = [
 ];
 
 const navItemsRight = [
+  { href: "/app/roadmap", icon: Map, label: "Roadmap" },
   { href: "/app/inbox", icon: Bell, label: "Inbox" },
   { href: "/app/settings", icon: User, label: "Profile" },
 ];
