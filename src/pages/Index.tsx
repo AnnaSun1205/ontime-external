@@ -1,29 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
-import { IntroAnimation } from "@/components/landing/IntroAnimation";
-import { HeroSection } from "@/components/landing/HeroSection";
-import { SocialProofSection } from "@/components/landing/SocialProofSection";
-import { SellingPointsSection } from "@/components/landing/SellingPointsSection";
-import { HowItWorksSection } from "@/components/landing/HowItWorksSection";
-import { FeatureShowcaseSection } from "@/components/landing/FeatureShowcaseSection";
-import { ProductPreviewSection } from "@/components/landing/ProductPreviewSection";
-import { NetworkingSection } from "@/components/landing/NetworkingSection";
-import { CompaniesSection } from "@/components/landing/CompaniesSection";
-import { CompanyLogosSection } from "@/components/landing/CompanyLogosSection";
-import { PricingSection } from "@/components/landing/PricingSection";
-import { ReviewsSection } from "@/components/landing/ReviewsSection";
-import { FounderStorySection } from "@/components/landing/FounderStorySection";
-import { FAQSection } from "@/components/landing/FAQSection";
-import { FinalCTA } from "@/components/landing/FinalCTA";
-import { StickyCTA } from "@/components/landing/StickyCTA";
+import { Logo } from "@/components/Logo";
+import { Button } from "@/components/ui/button";
+import { BubbleLogoAnimation } from "@/components/landing/BubbleLogoAnimation";
+import { ArrowRight } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
-  const [showIntro, setShowIntro] = useState(false);
-  const [introComplete, setIntroComplete] = useState(false);
+  const [animating, setAnimating] = useState(false);
+  const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
+  const [fadeOut, setFadeOut] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,8 +31,6 @@ const Index = () => {
     };
 
     const checkAndRedirect = async () => {
-      // If Supabase redirects OAuth back to "/" (misconfigured redirect URLs),
-      // we still want to complete the session exchange and route straight into the app.
       const code = new URLSearchParams(window.location.search).get("code");
       if (code) {
         await supabase.auth.exchangeCodeForSession(code);
@@ -56,10 +42,8 @@ const Index = () => {
       }
     };
 
-    // Run once on load
     checkAndRedirect();
 
-    // Also react immediately if auth state changes (e.g. OAuth completes after load)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
       if (session?.user) {
         setTimeout(() => {
@@ -76,47 +60,72 @@ const Index = () => {
     };
   }, [navigate]);
 
-  useEffect(() => {
-    // Check if user has seen the intro before
-    const hasSeenIntro = sessionStorage.getItem("ontime-intro-seen");
-    if (!hasSeenIntro) {
-      setShowIntro(true);
-    } else {
-      setIntroComplete(true);
+  const handleCTAClick = () => {
+    if (animating) return;
+    if (buttonRef.current) {
+      setButtonRect(buttonRef.current.getBoundingClientRect());
     }
-  }, []);
-
-  const handleIntroComplete = () => {
-    sessionStorage.setItem("ontime-intro-seen", "true");
-    setShowIntro(false);
-    setIntroComplete(true);
+    setAnimating(true);
   };
 
-  return (
-    <div className="min-h-screen flex flex-col bg-background">
-      {showIntro && <IntroAnimation onComplete={handleIntroComplete} />}
+  const handleAnimationComplete = useCallback(() => {
+    setFadeOut(true);
+    setTimeout(() => {
+      navigate("/waitlist");
+    }, 500);
+  }, [navigate]);
 
-      <div className={`transition-opacity duration-700 ${introComplete ? "opacity-100" : "opacity-0"}`}>
-        <Header />
-        <main className="flex-1">
-          <HeroSection />
-          <SocialProofSection />
-          <SellingPointsSection />
-          <HowItWorksSection />
-          <FeatureShowcaseSection />
-          <ProductPreviewSection />
-          <NetworkingSection />
-          <CompaniesSection />
-          <CompanyLogosSection />
-          <ReviewsSection />
-          <FounderStorySection />
-          <PricingSection />
-          <FAQSection />
-          <FinalCTA />
-        </main>
-        <Footer />
-        <StickyCTA />
-      </div>
+  return (
+    <div
+      className={`min-h-screen flex flex-col transition-opacity duration-500 ${fadeOut ? "opacity-0" : "opacity-100"}`}
+      style={{ background: "linear-gradient(180deg, hsl(30 30% 97%) 0%, hsl(214 100% 97%) 60%, hsl(214 95% 94%) 100%)" }}
+    >
+      {/* Minimal header */}
+      <header className="w-full px-6 py-5">
+        <Logo size="sm" />
+      </header>
+
+      {/* Centered content */}
+      <main className="flex-1 flex flex-col items-center justify-center px-6 -mt-16">
+        <div className="text-center max-w-2xl mx-auto">
+          <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl text-foreground leading-[1.1] tracking-tight mb-5">
+            Stay ahead of
+            <br />
+            the best internships
+          </h1>
+
+          <p className="text-lg md:text-xl text-muted-foreground max-w-md mx-auto mb-10 leading-relaxed">
+            A personalized calendar with early alerts — so you never miss an application window.
+          </p>
+
+          <Button
+            ref={buttonRef}
+            size="lg"
+            onClick={handleCTAClick}
+            disabled={animating}
+            className="text-base px-10 py-6 rounded-full shadow-md hover:shadow-lg transition-all duration-300 text-lg"
+          >
+            Get Early Access
+            <ArrowRight className="ml-2 h-5 w-5" />
+          </Button>
+
+          <p className="mt-5 text-sm text-muted-foreground/70">
+            Free • No credit card required
+          </p>
+        </div>
+      </main>
+
+      {/* Subtle decorative blobs */}
+      <div className="fixed top-1/4 left-10 w-64 h-64 bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed bottom-1/4 right-10 w-80 h-80 bg-status-expected/5 rounded-full blur-3xl pointer-events-none" />
+
+      {/* Bubble animation overlay */}
+      {animating && (
+        <BubbleLogoAnimation
+          onComplete={handleAnimationComplete}
+          buttonRect={buttonRect}
+        />
+      )}
     </div>
   );
 };

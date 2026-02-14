@@ -150,3 +150,18 @@
   0% { transform: translateX(-50%); }
   100% { transform: translateX(0); }
 }
+
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--drift, 0px)), calc(-50% - 280px)) scale(0.6);
+  }
+}
