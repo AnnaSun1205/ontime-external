@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -27,26 +27,47 @@ const COMPANIES: { name: string; domain: string }[] = [
   { name: "Salesforce", domain: "salesforce.com" },
   { name: "NVIDIA", domain: "nvidia.com" },
   { name: "Figma", domain: "figma.com" },
+  { name: "Coinbase", domain: "coinbase.com" },
+  { name: "Notion", domain: "notion.so" },
+  { name: "Slack", domain: "slack.com" },
+  { name: "Dropbox", domain: "dropbox.com" },
 ];
 
 interface BubbleLogo {
   id: number;
   domain: string;
-  x: number;
+  startX: number;
+  startY: number;
   delay: number;
   drift: number;
   duration: number;
+  size: number;
 }
 
-function LogoBubbles({ bubbles }: { bubbles: BubbleLogo[] }) {
+function generateBubbleWave(startId: number, count: number): BubbleLogo[] {
+  const shuffled = [...COMPANIES].sort(() => Math.random() - 0.5).slice(0, count);
+  return shuffled.map((company, i) => ({
+    id: startId + i,
+    domain: company.domain,
+    startX: 10 + Math.random() * 80, // % from left
+    startY: 60 + Math.random() * 30, // % from top (start in lower area)
+    delay: i * 0.15 + Math.random() * 0.1,
+    drift: (Math.random() - 0.5) * 60,
+    duration: 2.5 + Math.random() * 1.5,
+    size: 32 + Math.random() * 16,
+  }));
+}
+
+function BackgroundBubbles({ bubbles }: { bubbles: BubbleLogo[] }) {
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-[1]" aria-hidden="true">
       {bubbles.map((b) => (
         <div
           key={b.id}
-          className="absolute bottom-[40%] rounded-full"
+          className="absolute"
           style={{
-            left: `calc(50% + ${b.x}px)`,
+            left: `${b.startX}%`,
+            top: `${b.startY}%`,
             animationName: "bubble-rise",
             animationDuration: `${b.duration}s`,
             animationDelay: `${b.delay}s`,
@@ -56,8 +77,10 @@ function LogoBubbles({ bubbles }: { bubbles: BubbleLogo[] }) {
           }}
         >
           <div
-            className="w-10 h-10 rounded-full bg-card shadow-md border border-border/40 flex items-center justify-center"
+            className="rounded-full bg-card/80 shadow-sm border border-border/30 flex items-center justify-center backdrop-blur-sm"
             style={{
+              width: b.size,
+              height: b.size,
               animationName: "bubble-drift",
               animationDuration: `${b.duration}s`,
               animationDelay: `${b.delay}s`,
@@ -69,8 +92,10 @@ function LogoBubbles({ bubbles }: { bubbles: BubbleLogo[] }) {
             <img
               src={`https://logo.clearbit.com/${b.domain}`}
               alt=""
-              className="w-6 h-6 rounded-full object-contain"
+              className="rounded-full object-contain"
+              style={{ width: b.size * 0.6, height: b.size * 0.6 }}
               loading="eager"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
             />
           </div>
         </div>
@@ -84,21 +109,35 @@ export default function Waitlist() {
   const [loading, setLoading] = useState(false);
   const [joined, setJoined] = useState(false);
   const [bubbles, setBubbles] = useState<BubbleLogo[]>([]);
-  const bubbleIdRef = useRef(0);
 
-  const spawnBubbles = useCallback(() => {
-    const count = 12;
-    const shuffled = [...COMPANIES].sort(() => Math.random() - 0.5).slice(0, count);
-    const newBubbles: BubbleLogo[] = shuffled.map((company, i) => ({
-      id: bubbleIdRef.current++,
-      domain: company.domain,
-      x: (Math.random() - 0.5) * 200,
-      delay: i * 0.07,
-      drift: (Math.random() - 0.5) * 80,
-      duration: 1.1 + Math.random() * 0.4,
-    }));
-    setBubbles(newBubbles);
-    setTimeout(() => setBubbles([]), 2000);
+  // Spawn bubbles on page load in waves
+  useEffect(() => {
+    let id = 0;
+    const wave1 = generateBubbleWave(id, 10);
+    id += 10;
+    setBubbles(wave1);
+
+    const t2 = setTimeout(() => {
+      const wave2 = generateBubbleWave(id, 8);
+      id += 8;
+      setBubbles((prev) => [...prev, ...wave2]);
+    }, 1800);
+
+    const t3 = setTimeout(() => {
+      const wave3 = generateBubbleWave(id, 6);
+      setBubbles((prev) => [...prev, ...wave3]);
+    }, 3500);
+
+    // Clean up old bubbles after they've animated
+    const cleanup = setTimeout(() => {
+      setBubbles([]);
+    }, 6000);
+
+    return () => {
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(cleanup);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -111,8 +150,6 @@ export default function Waitlist() {
     }
 
     setLoading(true);
-    spawnBubbles();
-
     try {
       const { error } = await supabase.from("waitlist").insert({ email: result.data });
 
@@ -124,7 +161,7 @@ export default function Waitlist() {
           toast.error("Something went wrong. Please try again.");
         }
       } else {
-        setTimeout(() => setJoined(true), 800);
+        setJoined(true);
         toast.success("You're on the list!");
       }
     } catch {
@@ -146,6 +183,9 @@ export default function Waitlist() {
         aria-hidden="true"
       />
 
+      {/* Background bubble logos on page load */}
+      <BackgroundBubbles bubbles={bubbles} />
+
       <header className="container py-6 relative z-10">
         <Link
           to="/"
@@ -157,10 +197,7 @@ export default function Waitlist() {
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 relative z-10">
-        {/* Bubble animation layer */}
-        <LogoBubbles bubbles={bubbles} />
-
-        <div className="w-full max-w-md text-center space-y-8 bg-card rounded-2xl p-8 shadow-lg border border-border/40 relative z-10">
+        <div className="w-full max-w-md text-center space-y-8 bg-card rounded-2xl p-8 shadow-lg border border-border/40 relative">
           <Logo size="md" />
 
           <div className="space-y-3">
@@ -192,7 +229,7 @@ export default function Waitlist() {
                 className="flex-1 h-12 bg-white border-border shadow-sm text-base"
                 disabled={loading}
               />
-              <Button type="submit" disabled={loading} className="shrink-0 relative overflow-visible">
+              <Button type="submit" disabled={loading} className="shrink-0">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join waitlist"}
               </Button>
             </form>
