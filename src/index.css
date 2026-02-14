@@ -150,3 +150,31 @@
   0% { transform: translateX(-50%); }
   100% { transform: translateX(0); }
 }
+
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.4);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-30px) scale(1);
+  }
+  70% {
+    opacity: 0.8;
+    transform: translateY(-180px) scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-280px) scale(0.7);
+  }
+}
+
+@keyframes bubble-drift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(var(--drift, 20px));
+  }
+}

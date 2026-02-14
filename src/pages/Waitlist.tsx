@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
@@ -25,60 +25,56 @@ const COMPANIES: { name: string; domain: string }[] = [
   { name: "Spotify", domain: "spotify.com" },
   { name: "Adobe", domain: "adobe.com" },
   { name: "Salesforce", domain: "salesforce.com" },
-  { name: "Goldman Sachs", domain: "goldmansachs.com" },
-  { name: "JPMorgan", domain: "jpmorgan.com" },
-  { name: "Morgan Stanley", domain: "morganstanley.com" },
-  { name: "Citadel", domain: "citadel.com" },
-  { name: "Jane Street", domain: "janestreet.com" },
-  { name: "Databricks", domain: "databricks.com" },
-  { name: "Snowflake", domain: "snowflake.com" },
-  { name: "Palantir", domain: "palantir.com" },
-  { name: "Coinbase", domain: "coinbase.com" },
-  { name: "Figma", domain: "figma.com" },
-  { name: "Notion", domain: "notion.so" },
-  { name: "Slack", domain: "slack.com" },
-  { name: "Dropbox", domain: "dropbox.com" },
-  { name: "Pinterest", domain: "pinterest.com" },
-  { name: "Snap", domain: "snap.com" },
-  { name: "Twitter", domain: "twitter.com" },
-  { name: "LinkedIn", domain: "linkedin.com" },
-  { name: "Intel", domain: "intel.com" },
-  { name: "AMD", domain: "amd.com" },
   { name: "NVIDIA", domain: "nvidia.com" },
-  { name: "Oracle", domain: "oracle.com" },
-  { name: "IBM", domain: "ibm.com" },
-  { name: "SAP", domain: "sap.com" },
-  { name: "Cisco", domain: "cisco.com" },
+  { name: "Figma", domain: "figma.com" },
 ];
 
-const ROW1 = COMPANIES.slice(0, 13);
-const ROW2 = COMPANIES.slice(13, 26);
-const ROW3 = COMPANIES.slice(26);
+interface BubbleLogo {
+  id: number;
+  domain: string;
+  x: number;
+  delay: number;
+  drift: number;
+  duration: number;
+}
 
-function MarqueeRow({ items, duration, reverse = false }: { items: typeof COMPANIES; duration: number; reverse?: boolean }) {
-  const doubled = [...items, ...items];
+function LogoBubbles({ bubbles }: { bubbles: BubbleLogo[] }) {
   return (
-    <div className="flex overflow-hidden select-none pointer-events-none">
-      <div
-        className={`flex shrink-0 gap-4 ${reverse ? "animate-[marquee-reverse_var(--duration)_linear_infinite]" : "animate-[marquee_var(--duration)_linear_infinite]"}`}
-        style={{ "--duration": `${duration}s` } as React.CSSProperties}
-      >
-        {doubled.map((company, i) => (
-          <span
-            key={`${company.name}-${i}`}
-            className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full border border-border/60 bg-background/80 text-sm font-medium text-muted-foreground whitespace-nowrap backdrop-blur-sm"
+    <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
+      {bubbles.map((b) => (
+        <div
+          key={b.id}
+          className="absolute bottom-[40%] rounded-full"
+          style={{
+            left: `calc(50% + ${b.x}px)`,
+            animationName: "bubble-rise",
+            animationDuration: `${b.duration}s`,
+            animationDelay: `${b.delay}s`,
+            animationTimingFunction: "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+            animationFillMode: "forwards",
+            opacity: 0,
+          }}
+        >
+          <div
+            className="w-10 h-10 rounded-full bg-card shadow-md border border-border/40 flex items-center justify-center"
+            style={{
+              animationName: "bubble-drift",
+              animationDuration: `${b.duration}s`,
+              animationDelay: `${b.delay}s`,
+              animationTimingFunction: "ease-in-out",
+              animationFillMode: "forwards",
+              ["--drift" as string]: `${b.drift}px`,
+            }}
           >
             <img
-              src={`https://logo.clearbit.com/${company.domain}`}
+              src={`https://logo.clearbit.com/${b.domain}`}
               alt=""
-              className="w-5 h-5 rounded-full object-contain"
-              loading="lazy"
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              className="w-6 h-6 rounded-full object-contain"
+              loading="eager"
             />
-            {company.name}
-          </span>
-        ))}
-      </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -87,6 +83,23 @@ export default function Waitlist() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [bubbles, setBubbles] = useState<BubbleLogo[]>([]);
+  const bubbleIdRef = useRef(0);
+
+  const spawnBubbles = useCallback(() => {
+    const count = 12;
+    const shuffled = [...COMPANIES].sort(() => Math.random() - 0.5).slice(0, count);
+    const newBubbles: BubbleLogo[] = shuffled.map((company, i) => ({
+      id: bubbleIdRef.current++,
+      domain: company.domain,
+      x: (Math.random() - 0.5) * 200,
+      delay: i * 0.07,
+      drift: (Math.random() - 0.5) * 80,
+      duration: 1.1 + Math.random() * 0.4,
+    }));
+    setBubbles(newBubbles);
+    setTimeout(() => setBubbles([]), 2000);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +111,8 @@ export default function Waitlist() {
     }
 
     setLoading(true);
+    spawnBubbles();
+
     try {
       const { error } = await supabase.from("waitlist").insert({ email: result.data });
 
@@ -109,7 +124,7 @@ export default function Waitlist() {
           toast.error("Something went wrong. Please try again.");
         }
       } else {
-        setJoined(true);
+        setTimeout(() => setJoined(true), 800);
         toast.success("You're on the list!");
       }
     } catch {
@@ -121,31 +136,31 @@ export default function Waitlist() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col relative overflow-hidden">
-      {/* Scrolling company marquee background */}
-      <div className="absolute inset-0 flex flex-col justify-center gap-4 opacity-[0.35]" aria-hidden="true">
-        <MarqueeRow items={ROW1} duration={35} />
-        <MarqueeRow items={ROW2} duration={40} reverse />
-        <MarqueeRow items={ROW3} duration={30} />
-      </div>
-
-      {/* Radial fade so center content pops */}
+      {/* Soft gradient background */}
       <div
-        className="absolute inset-0 z-[1]"
+        className="absolute inset-0"
         style={{
-          background: "radial-gradient(ellipse 60% 50% at 50% 50%, hsl(var(--background)) 30%, transparent 80%)",
+          background:
+            "radial-gradient(ellipse 80% 60% at 50% 40%, hsl(var(--secondary) / 0.6) 0%, hsl(var(--background)) 70%)",
         }}
         aria-hidden="true"
       />
 
       <header className="container py-6 relative z-10">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
           <ArrowLeft className="w-4 h-4" />
           Back to home
         </Link>
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 relative z-10">
-        <div className="w-full max-w-md text-center space-y-8 bg-card rounded-2xl p-8 shadow-lg border border-border/40">
+        {/* Bubble animation layer */}
+        <LogoBubbles bubbles={bubbles} />
+
+        <div className="w-full max-w-md text-center space-y-8 bg-card rounded-2xl p-8 shadow-lg border border-border/40 relative z-10">
           <Logo size="md" />
 
           <div className="space-y-3">
@@ -153,7 +168,8 @@ export default function Waitlist() {
               Join the waitlist
             </h1>
             <p className="text-muted-foreground text-base">
-              We're expanding to new regions soon. Drop your email and we'll let you know when we launch near you.
+              We're expanding to new regions soon. Drop your email and we'll let you know when we
+              launch near you.
             </p>
           </div>
 
@@ -176,7 +192,7 @@ export default function Waitlist() {
                 className="flex-1 h-12 bg-white border-border shadow-sm text-base"
                 disabled={loading}
               />
-              <Button type="submit" disabled={loading} className="shrink-0">
+              <Button type="submit" disabled={loading} className="shrink-0 relative overflow-visible">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join waitlist"}
               </Button>
             </form>
